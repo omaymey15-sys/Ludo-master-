@@ -1,37 +1,62 @@
 name: Build FlappyCoin APK
 
 on:
-push:
-branches:
-- main
-workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-build:
-runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
 
-steps:  
-  - name: Checkout repository  
-    uses: actions/checkout@v4  
+    permissions:
+      contents: read
 
-  - name: Setup Java 17  
-    uses: actions/setup-java@v4  
-    with:  
-      distribution: temurin  
-      java-version: 17  
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-  - name: Setup Android SDK  
-    uses: android-actions/setup-android@v3  
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
 
-  - name: Grant permission to Gradle  
-    run: chmod +x android/gradlew  
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-  - name: Build Debug APK  
-    working-directory: android  
-    run: ./gradlew assembleDebug  
+      - name: Grant Gradle Permission
+        run: chmod +x android/gradlew
 
-  - name: Upload APK  
-    uses: actions/upload-artifact@v4  
-    with:  
-      name: FlappyCoin-APK  
-      path: android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Cache Gradle Files
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build Debug APK
+        working-directory: android
+        run: |
+          ./gradlew clean
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Verify APK
+        run: |
+          ls -R android/app/build/outputs/apk/debug/
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlappyCoin-Debug-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
