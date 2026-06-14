@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎲 Ludo Master Pro — Admin</title>
+<style>
+  :root {
+    --bg:      #0d0d1a; --bg2: #13132a; --bg3: #1a1a3a;
+    --gold:    #FFD700; --green: #27AE60; --red: #E74C3C;
+    --blue:    #2980B9; --yellow: #F39C12;
+    --text:    #ffffff; --muted: #888899; --border: #222244;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
+
+  /* ── Layout ── */
+  .layout  { display: flex; min-height: 100vh; }
+  .sidebar { width: 220px; background: var(--bg2); border-right: 1px solid var(--border);
+             padding: 24px 0; display: flex; flex-direction: column; gap: 4px; position: fixed;
+             top: 0; left: 0; height: 100vh; }
+  .main    { margin-left: 220px; flex: 1; padding: 28px; }
+
+  /* ── Sidebar ── */
+  .logo    { padding: 0 20px 24px; font-size: 20px; font-weight: 800; color: var(--gold); }
+  .nav-item{ padding: 11px 20px; cursor: pointer; border-radius: 0 8px 8px 0;
+             margin-right: 8px; color: var(--muted); font-size: 14px; transition: .15s;
+             display: flex; align-items: center; gap: 10px; }
+  .nav-item:hover, .nav-item.active { background: var(--bg3); color: var(--text); }
+  .nav-item.active { border-left: 3px solid var(--gold); }
+
+  /* ── Cards KPI ── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+              gap: 16px; margin-bottom: 28px; }
+  .kpi { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+         padding: 20px; }
+  .kpi-value { font-size: 28px; font-weight: 800; margin: 6px 0 2px; }
+  .kpi-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  .kpi.gold   { border-color: var(--gold);  } .kpi.gold  .kpi-value { color: var(--gold);   }
+  .kpi.green  { border-color: var(--green); } .kpi.green .kpi-value { color: var(--green);  }
+  .kpi.red    { border-color: var(--red);   } .kpi.red   .kpi-value { color: var(--red);    }
+  .kpi.blue   { border-color: var(--blue);  } .kpi.blue  .kpi-value { color: var(--blue);   }
+
+  /* ── Tables ── */
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px;
+          padding: 20px; margin-bottom: 20px; }
+  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 16px; color: var(--muted);
+             text-transform: uppercase; letter-spacing: 1px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th    { color: var(--muted); font-weight: 600; padding: 8px 12px; text-align: left;
+          border-bottom: 1px solid var(--border); }
+  td    { padding: 10px 12px; border-bottom: 1px solid var(--border)33; }
+  tr:hover td { background: var(--bg3); }
+
+  /* ── Badges ── */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .badge.success  { background: #1E8449; color: #A9DFBF; }
+  .badge.pending  { background: #784212; color: #FAD7A0; }
+  .badge.failed   { background: #7B241C; color: #F1948A; }
+  .badge.open     { background: #1A5276; color: #85C1E9; }
+  .badge.finished { background: #333355; color: #aaa; }
+  .badge.playing  { background: #6E2F8B; color: #D2B4DE; }
+
+  /* ── Boutons ── */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+         border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 600;
+         transition: .15s; }
+  .btn-gold  { background: var(--gold);  color: #000; }
+  .btn-green { background: var(--green); color: #fff; }
+  .btn-red   { background: var(--red);   color: #fff; }
+  .btn-ghost { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
+  .btn:hover { opacity: .85; transform: translateY(-1px); }
+
+  /* ── Formulaire Compétition ── */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 12px; color: var(--muted); text-transform: uppercase; }
+  .form-group input, .form-group select, .form-group textarea {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); padding: 10px 12px; font-size: 14px; outline: none; }
+  .form-group input:focus { border-color: var(--gold); }
+
+  /* ── Toast ── */
+  #toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg2);
+           border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px;
+           font-size: 14px; transform: translateY(100px); opacity: 0;
+           transition: .3s; z-index: 999; max-width: 320px; }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.ok   { border-color: var(--green); }
+  #toast.err  { border-color: var(--red); }
+
+  /* ── Login overlay ── */
+  #login-overlay { position: fixed; inset: 0; background: var(--bg);
+    display: flex; align-items: center; justify-content: center; z-index: 9999; }
+  .login-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px;
+    padding: 40px; width: 340px; }
+  .login-box h1 { font-size: 22px; color: var(--gold); margin-bottom: 24px; text-align: center; }
+
+  /* Sections */
+  .section { display: none; } .section.active { display: block; }
+  .page-title { font-size: 22px; font-weight: 800; margin-bottom: 24px; }
+  .toolbar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
+  .toolbar input { flex: 1; background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); padding: 9px 14px; font-size: 13px; outline: none; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 14px; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main    { margin-left: 0; padding: 16px; }
+    .form-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN ──────────────────────────────────────────────── -->
+<div id="login-overlay">
+  <div class="login-box">
+    <h1>🎲 Ludo Master Pro<br><small style="font-size:14px;color:var(--muted)">Administration</small></h1>
+    <div class="form-group" style="margin-bottom:14px">
+      <label>Email</label>
+      <input type="email" id="login-email" placeholder="admin@ludomaster.cd">
+    </div>
+    <div class="form-group" style="margin-bottom:24px">
+      <label>Mot de passe</label>
+      <input type="password" id="login-pwd" placeholder="••••••••">
+    </div>
+    <button class="btn btn-gold" style="width:100%;justify-content:center" onclick="doLogin()">
+      Connexion Admin
+    </button>
+    <p id="login-err" style="color:var(--red);font-size:13px;margin-top:12px;text-align:center"></p>
+  </div>
+</div>
+
+<!-- ── LAYOUT ─────────────────────────────────────────────── -->
+<div class="layout">
+  <nav class="sidebar">
+    <div class="logo">🎲 LudoAdmin</div>
+    <div class="nav-item active" onclick="nav('dashboard')">📊 Dashboard</div>
+    <div class="nav-item" onclick="nav('competitions')">🏆 Compétitions</div>
+    <div class="nav-item" onclick="nav('new-competition')">➕ Nouvelle Compét.</div>
+    <div class="nav-item" onclick="nav('users')">👥 Joueurs</div>
+    <div class="nav-item" onclick="nav('transactions')">💰 Transactions</div>
+    <div class="nav-item" onclick="nav('reports')">📈 Rapports</div>
+    <div style="flex:1"></div>
+    <div class="nav-item" onclick="logout()" style="margin-bottom:16px">🚪 Déconnexion</div>
+  </nav>
+
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div id="sec-dashboard" class="section active">
+      <div class="page-title">📊 Dashboard</div>
+      <div class="kpi-grid" id="kpi-grid">
+        <div class="kpi gold"><div class="kpi-label">Revenus plateforme</div><div class="kpi-value" id="kpi-revenue">—</div><div style="font-size:12px;color:var(--muted)">CDF total</div></div>
+        <div class="kpi green"><div class="kpi-label">Total déposé</div><div class="kpi-value" id="kpi-deposit">—</div><div style="font-size:12px;color:var(--muted)" id="kpi-deposit-count">0 dépôts</div></div>
+        <div class="kpi red"><div class="kpi-label">Total retiré</div><div class="kpi-value" id="kpi-withdraw">—</div><div style="font-size:12px;color:var(--muted)" id="kpi-withdraw-count">0 retraits</div></div>
+        <div class="kpi blue"><div class="kpi-label">Utilisateurs</div><div class="kpi-value" id="kpi-users">—</div><div style="font-size:12px;color:var(--muted)" id="kpi-users-active">actifs</div></div>
+        <div class="kpi" style="border-color:#6E2F8B"><div class="kpi-label">Compétitions ouvertes</div><div class="kpi-value" style="color:#D2B4DE" id="kpi-comps-open">—</div></div>
+        <div class="kpi" style="border-color:#F39C12"><div class="kpi-label">En cours</div><div class="kpi-value" style="color:#F39C12" id="kpi-comps-play">—</div></div>
+      </div>
+      <div class="card">
+        <h2>⚡ Dernières transactions</h2>
+        <table id="tbl-recent">
+          <thead><tr><th>Joueur</th><th>Type</th><th>Montant</th><th>Statut</th><th>Date</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- COMPÉTITIONS -->
+    <div id="sec-competitions" class="section">
+      <div class="page-title">🏆 Compétitions</div>
+      <div class="toolbar">
+        <select id="comp-filter" onchange="loadCompetitions()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 12px">
+          <option value="">Tous les statuts</option>
+          <option value="open">Ouvertes</option>
+          <option value="full">Complètes</option>
+          <option value="playing">En cours</option>
+          <option value="finished">Terminées</option>
+          <option value="cancelled">Annulées</option>
+        </select>
+        <button class="btn btn-gold" onclick="nav('new-competition')">➕ Créer</button>
+      </div>
+      <div class="card">
+        <table id="tbl-comps">
+          <thead><tr><th>Titre</th><th>Mise</th><th>Prize Pool</th><th>Joueurs</th><th>Statut</th><th>Créée</th><th>Actions</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- NOUVELLE COMPÉTITION -->
+    <div id="sec-new-competition" class="section">
+      <div class="page-title">➕ Créer une Compétition</div>
+      <div class="card">
+        <div class="form-grid">
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Titre</label>
+            <input id="nc-title" placeholder="Ex : Tournoi du Vendredi — 500 CDF">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Description</label>
+            <textarea id="nc-desc" rows="3" placeholder="Décrivez la compétition…"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Mise d'entrée (CDF)</label>
+            <input id="nc-fee" type="number" min="200" placeholder="500">
+          </div>
+          <div class="form-group">
+            <label>Nombre de joueurs max</label>
+            <select id="nc-max">
+              <option value="2">2 joueurs</option>
+              <option value="3">3 joueurs</option>
+              <option value="4" selected>4 joueurs</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Distribution gains 1er (%)</label>
+            <input id="nc-p1" type="number" value="60" min="0" max="100">
+          </div>
+          <div class="form-group">
+            <label>Distribution gains 2ème (%)</label>
+            <input id="nc-p2" type="number" value="30" min="0" max="100">
+          </div>
+          <div class="form-group">
+            <label>Distribution gains 3ème (%)</label>
+            <input id="nc-p3" type="number" value="10" min="0" max="100">
+          </div>
+          <div class="form-group">
+            <label>Date d'ouverture</label>
+            <input id="nc-open" type="datetime-local">
+          </div>
+          <div class="form-group">
+            <label>IA autorisée ?</label>
+            <select id="nc-ai">
+              <option value="false">Non — Humains uniquement</option>
+              <option value="true">Oui</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Visibilité</label>
+            <select id="nc-public">
+              <option value="true">Publique</option>
+              <option value="false">Privée (code d'invitation)</option>
+            </select>
+          </div>
+        </div>
+        <div id="nc-preview" style="margin-top:20px;padding:16px;background:var(--bg3);border-radius:10px;display:none">
+          <h3 style="margin-bottom:12px;color:var(--gold)">Aperçu</h3>
+          <div id="nc-preview-content"></div>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:24px">
+          <button class="btn btn-ghost" onclick="previewComp()">👁 Aperçu</button>
+          <button class="btn btn-gold" onclick="createCompetition()">🚀 Créer la compétition</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- JOUEURS -->
+    <div id="sec-users" class="section">
+      <div class="page-title">👥 Joueurs</div>
+      <div class="toolbar">
+        <input id="user-search" placeholder="Rechercher par pseudo, email, téléphone…" oninput="searchUsers()">
+        <button class="btn btn-ghost" onclick="loadUsers()">🔄</button>
+      </div>
+      <div class="card">
+        <table id="tbl-users">
+          <thead><tr><th>Joueur</th><th>Email</th><th>Téléphone</th><th>Solde</th><th>Parties</th><th>Victoires</th><th>Statut</th><th>Actions</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TRANSACTIONS -->
+    <div id="sec-transactions" class="section">
+      <div class="page-title">💰 Transactions</div>
+      <div class="card">
+        <table id="tbl-tx">
+          <thead><tr><th>Joueur</th><th>Type</th><th>Opérateur</th><th>Montant</th><th>Statut</th><th>Référence</th><th>Date</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- RAPPORTS -->
+    <div id="sec-reports" class="section">
+      <div class="page-title">📈 Rapports</div>
+      <div class="kpi-grid" id="rpt-kpis"></div>
+      <div class="card">
+        <h2>🏆 Top Joueurs (Gains)</h2>
+        <table id="tbl-top">
+          <thead><tr><th>#</th><th>Joueur</th><th>Parties</th><th>Victoires</th><th>Win Rate</th><th>Total Gagné</th><th>Solde</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>📊 Flux par Opérateur</h2>
+        <table id="tbl-ops">
+          <thead><tr><th>Opérateur</th><th>Transactions</th><th>Volume (CDF)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────
+const API = localStorage.getItem('ludo_api') || 'http://localhost:3000/api';
+let TOKEN = localStorage.getItem('ludo_token') || '';
+
+// ── Helpers ──────────────────────────────────────────────────
+const fmt   = n  => Number(n||0).toLocaleString('fr-CD') + ' CDF';
+const fmtDt = dt => new Date(dt).toLocaleString('fr-CD');
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${TOKEN}`,
+      ...(opts.headers || {}),
+    },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Erreur API');
+  return data;
+}
+
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  setTimeout(() => el.className = '', 3500);
+}
+
+function statusBadge(s) {
+  const map = { success:'success', pending:'pending', failed:'failed',
+                open:'open', finished:'finished', playing:'playing',
+                full:'playing', cancelled:'failed', draft:'pending' };
+  const labels = { success:'✅ Succès', pending:'⏳ En attente', failed:'❌ Échoué',
+                   open:'🟢 Ouverte', finished:'🏁 Terminée', playing:'🎮 En jeu',
+                   full:'👥 Complète', cancelled:'🚫 Annulée', draft:'📝 Brouillon' };
+  return `<span class="badge ${map[s]||''}">${labels[s]||s}</span>`;
+}
+
+// ── Navigation ────────────────────────────────────────────────
+function nav(section) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`sec-${section}`)?.classList.add('active');
+  const idx = { dashboard:0, competitions:1, 'new-competition':2, users:3, transactions:4, reports:5 };
+  document.querySelectorAll('.nav-item')[idx[section]]?.classList.add('active');
+  if (section === 'dashboard')    loadDashboard();
+  if (section === 'competitions') loadCompetitions();
+  if (section === 'users')        loadUsers();
+  if (section === 'transactions') loadTransactions();
+  if (section === 'reports')      loadReports();
+}
+
+// ── Login ─────────────────────────────────────────────────────
+async function doLogin() {
+  const email = document.getElementById('login-email').value;
+  const pwd   = document.getElementById('login-pwd').value;
+  try {
+    const data = await api('/auth/login', { method: 'POST', body: { email, password: pwd } });
+    if (data.user?.role !== 'admin') throw new Error('Accès admin requis');
+    TOKEN = data.token;
+    localStorage.setItem('ludo_token', TOKEN);
+    document.getElementById('login-overlay').style.display = 'none';
+    loadDashboard();
+    toast('Bienvenue Admin !');
+  } catch (e) {
+    document.getElementById('login-err').textContent = e.message;
+  }
+}
+
+function logout() {
+  TOKEN = '';
+  localStorage.removeItem('ludo_token');
+  location.reload();
+}
+
+// ── Dashboard ─────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const d = await api('/admin/dashboard');
+    document.getElementById('kpi-revenue').textContent       = fmt(d.finance.platformRevenue);
+    document.getElementById('kpi-deposit').textContent       = fmt(d.finance.totalDeposited);
+    document.getElementById('kpi-deposit-count').textContent = `${d.finance.depositCount} dépôts`;
+    document.getElementById('kpi-withdraw').textContent      = fmt(d.finance.totalWithdrawn);
+    document.getElementById('kpi-withdraw-count').textContent= `${d.finance.withdrawCount} retraits`;
+    document.getElementById('kpi-users').textContent         = d.users.total;
+    document.getElementById('kpi-users-active').textContent  = `${d.users.active} actifs`;
+    document.getElementById('kpi-comps-open').textContent    = d.competitions.open;
+    document.getElementById('kpi-comps-play').textContent    = d.competitions.playing;
+
+    const tbody = document.querySelector('#tbl-recent tbody');
+    tbody.innerHTML = (d.recentTransactions || []).map(tx => `
+      <tr>
+        <td>${tx.user?.username || '—'}</td>
+        <td>${tx.type}</td>
+        <td style="color:${tx.type==='deposit'?'#27AE60':'#E74C3C'}">${tx.type==='deposit'?'+':'−'}${fmt(tx.amount)}</td>
+        <td>${statusBadge(tx.status)}</td>
+        <td>${fmtDt(tx.createdAt)}</td>
+      </tr>`).join('') || '<tr><td colspan="5" class="empty">Aucune transaction</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Compétitions ──────────────────────────────────────────────
+async function loadCompetitions() {
+  const status = document.getElementById('comp-filter')?.value || '';
+  try {
+    const d = await api(`/admin/competitions?status=${status}&limit=50`);
+    const tbody = document.querySelector('#tbl-comps tbody');
+    tbody.innerHTML = (d.competitions || []).map(c => `
+      <tr>
+        <td><strong>${c.title}</strong></td>
+        <td>${fmt(c.entryFee)}</td>
+        <td style="color:var(--gold)">${fmt(c.prizePool)}</td>
+        <td>${c.players.length}/${c.maxPlayers}</td>
+        <td>${statusBadge(c.status)}</td>
+        <td>${fmtDt(c.createdAt)}</td>
+        <td>
+          <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px"
+            onclick="cancelComp('${c._id}')">🚫 Annuler</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="7" class="empty">Aucune compétition</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function cancelComp(id) {
+  if (!confirm('Annuler et rembourser tous les joueurs ?')) return;
+  try {
+    const d = await api(`/competitions/${id}`, { method: 'DELETE' });
+    toast(`✅ Annulée. ${d.refunds?.length || 0} remboursements.`);
+    loadCompetitions();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Créer compétition ─────────────────────────────────────────
+function previewComp() {
+  const fee   = Number(document.getElementById('nc-fee').value) || 0;
+  const max   = Number(document.getElementById('nc-max').value) || 4;
+  const p1    = Number(document.getElementById('nc-p1').value) || 60;
+  const p2    = Number(document.getElementById('nc-p2').value) || 30;
+  const p3    = Number(document.getElementById('nc-p3').value) || 10;
+  const total = p1 + p2 + p3;
+  const gross = fee * max;
+  const feeAmt = Math.floor(gross * 0.10);
+  const pool  = gross - feeAmt;
+  const box   = document.getElementById('nc-preview');
+  document.getElementById('nc-preview-content').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">
+      <div>💰 Mise : <strong>${fmt(fee)}</strong></div>
+      <div>👥 Joueurs : <strong>${max}</strong></div>
+      <div>📦 Cagnotte brute : <strong>${fmt(gross)}</strong></div>
+      <div>🏦 Frais plateforme (10%) : <strong style="color:var(--red)">${fmt(feeAmt)}</strong></div>
+      <div>🏆 Prize Pool net : <strong style="color:var(--gold)">${fmt(pool)}</strong></div>
+      <div style="color:${total===100?'var(--green)':'var(--red)'}">Total distribution : ${total}%</div>
+      <div>🥇 1er : ${fmt(Math.floor(pool*p1/100))} (${p1}%)</div>
+      <div>🥈 2ème : ${fmt(Math.floor(pool*p2/100))} (${p2}%)</div>
+      ${p3>0?`<div>🥉 3ème : ${fmt(Math.floor(pool*p3/100))} (${p3}%)</div>`:''}
+    </div>`;
+  box.style.display = 'block';
+}
+
+async function createCompetition() {
+  const p1 = Number(document.getElementById('nc-p1').value)||60;
+  const p2 = Number(document.getElementById('nc-p2').value)||30;
+  const p3 = Number(document.getElementById('nc-p3').value)||10;
+  if (p1+p2+p3 !== 100) return toast('La distribution doit totaliser 100%', 'err');
+
+  const dist = [p1];
+  if (p2 > 0) dist.push(p2);
+  if (p3 > 0) dist.push(p3);
+
+  const body = {
+    title:             document.getElementById('nc-title').value,
+    description:       document.getElementById('nc-desc').value,
+    entryFee:          Number(document.getElementById('nc-fee').value),
+    maxPlayers:        Number(document.getElementById('nc-max').value),
+    prizeDistribution: dist,
+    openAt:            document.getElementById('nc-open').value || undefined,
+    aiAllowed:         document.getElementById('nc-ai').value === 'true',
+    isPublic:          document.getElementById('nc-public').value === 'true',
+  };
+
+  try {
+    await api('/admin/competitions', { method: 'POST', body });
+    toast('✅ Compétition créée !');
+    nav('competitions');
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Joueurs ───────────────────────────────────────────────────
+let userSearchTimer;
+function searchUsers() {
+  clearTimeout(userSearchTimer);
+  userSearchTimer = setTimeout(loadUsers, 400);
+}
+
+async function loadUsers() {
+  const search = document.getElementById('user-search')?.value || '';
+  try {
+    const d = await api(`/admin/users?search=${encodeURIComponent(search)}&limit=40`);
+    const tbody = document.querySelector('#tbl-users tbody');
+    tbody.innerHTML = (d.users || []).map(u => `
+      <tr>
+        <td>${u.avatar} <strong>${u.username}</strong></td>
+        <td style="color:var(--muted);font-size:12px">${u.email}</td>
+        <td>${u.phone}</td>
+        <td style="color:var(--gold)">${fmt(u.wallet?.balance)}</td>
+        <td>${u.stats?.gamesPlayed||0}</td>
+        <td>${u.stats?.gamesWon||0} (${u.stats?.winRate||0}%)</td>
+        <td>${u.isActive ? '<span class="badge success">Actif</span>' : '<span class="badge failed">Inactif</span>'}</td>
+        <td>
+          <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px"
+            onclick="toggleUser('${u._id}', ${!u.isActive})">
+            ${u.isActive ? '🔒 Désactiver' : '🔓 Activer'}
+          </button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="8" class="empty">Aucun joueur</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function toggleUser(id, active) {
+  try {
+    await api(`/admin/users/${id}/status`, { method: 'PATCH', body: { isActive: active } });
+    toast(`✅ Compte ${active ? 'activé' : 'désactivé'}`);
+    loadUsers();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Transactions ──────────────────────────────────────────────
+async function loadTransactions() {
+  try {
+    const d = await api('/payment/history?limit=40');
+    const tbody = document.querySelector('#tbl-tx tbody');
+    tbody.innerHTML = (d.transactions || []).map(tx => `
+      <tr>
+        <td>${tx.user?.username || '—'}</td>
+        <td><code>${tx.type}</code></td>
+        <td>${tx.operator || '—'}</td>
+        <td style="color:${tx.type==='deposit'||tx.type==='prize'?'#27AE60':'#E74C3C'}">
+          ${tx.type==='deposit'||tx.type==='prize'?'+':'−'}${fmt(tx.amount)}
+        </td>
+        <td>${statusBadge(tx.status)}</td>
+        <td style="font-size:11px;color:var(--muted)">${tx.wonyaRef||'—'}</td>
+        <td style="font-size:12px">${fmtDt(tx.createdAt)}</td>
+      </tr>`).join('') || '<tr><td colspan="7" class="empty">Aucune transaction</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Rapports ──────────────────────────────────────────────────
+async function loadReports() {
+  try {
+    const [top, daily] = await Promise.all([
+      api('/admin/reports/top-players'),
+      api('/admin/reports/daily?days=30'),
+    ]);
+
+    document.querySelector('#tbl-top tbody').innerHTML =
+      top.map((u, i) => `
+        <tr>
+          <td>${i+1}</td>
+          <td>${u.avatar} ${u.username}</td>
+          <td>${u.stats?.gamesPlayed||0}</td>
+          <td>${u.stats?.gamesWon||0}</td>
+          <td>${u.stats?.winRate||0}%</td>
+          <td style="color:var(--gold)">${fmt(u.stats?.totalEarned)}</td>
+          <td>${fmt(u.wallet?.balance)}</td>
+        </tr>`).join('') || '<tr><td colspan="7" class="empty">—</td></tr>';
+
+    document.querySelector('#tbl-ops tbody').innerHTML =
+      (daily.byOperator || []).map(op => `
+        <tr>
+          <td><strong>${op._id||'—'}</strong></td>
+          <td>${op.count}</td>
+          <td style="color:var(--gold)">${fmt(op.total)}</td>
+        </tr>`).join('') || '<tr><td colspan="3" class="empty">—</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Auto-login si token présent ───────────────────────────────
+if (TOKEN) {
+  document.getElementById('login-overlay').style.display = 'none';
+  loadDashboard();
+}
+</script>
+</body>
+</html>
