@@ -7,8 +7,8 @@ const helmet     = require('helmet');
 const morgan     = require('morgan');
 const rateLimit  = require('express-rate-limit');
 const http       = require('http');
+const path       = require('path');
 const { Server } = require('socket.io');
-
 const { startKeepAlive } = require('./utils/keepAlive');
 
 // Routes
@@ -24,11 +24,11 @@ const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] }
 });
 
-// ─────────────────────────────────────────────
-// TRUST PROXY (Render obligatoire)
+// ─────────────────────────────
+// TRUST PROXY (Render)
 app.set('trust proxy', 1);
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────
 // MIDDLEWARES
 app.use(helmet({ contentSecurityPolicy: false }));
 
@@ -38,7 +38,7 @@ app.use(cors({
     : '*'
 }));
 
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(morgan('dev'));
 
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -54,39 +54,43 @@ app.use('/api/auth/', rateLimit({
   max: 15
 }));
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────
 // ROOT ROUTE (IMPORTANT)
 app.get('/', (req, res) => {
-  res.status(200).json({
+  res.json({
     name: "Ludo Master API",
     status: "running",
     version: "1.0.0"
   });
 });
 
-// HEALTH CHECK
+// HEALTH CHECK (Render)
 app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
+  res.json({
+    status: "ok",
     uptime: process.uptime(),
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    mongodb: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
     time: new Date().toISOString()
   });
 });
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────
+// ADMIN DASHBOARD (HTML)
+app.use('/admin', express.static(path.join(__dirname, '../admin')));
+
+// ─────────────────────────────
 // API ROUTES
 app.use('/api/auth', authRouter);
 app.use('/api/payment', paymentRouter);
 app.use('/api/competitions', competitionRouter);
 app.use('/api/admin', adminRouter);
 
-// ─────────────────────────────────────────────
-// SOCKET.IO (MATCHMAKING)
+// ─────────────────────────────
+// SOCKET.IO
 const rooms = new Map();
 
 io.on('connection', (socket) => {
-  console.log('🔌 connecté:', socket.id);
+  console.log('🔌 user connecté:', socket.id);
 
   socket.on('join_room', (data) => {
     const { competitionId, userId, username, color } = data;
@@ -150,8 +154,8 @@ io.on('connection', (socket) => {
   });
 });
 
-// ─────────────────────────────────────────────
-// 404 HANDLER
+// ─────────────────────────────
+// 404 (LAST)
 app.use((req, res) => {
   res.status(404).json({
     error: "NOT_FOUND",
@@ -159,19 +163,19 @@ app.use((req, res) => {
   });
 });
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────
 // ERROR HANDLER
 app.use((err, req, res, next) => {
   console.error(err);
 
-  res.status(err.status || 500).json({
+  res.status(500).json({
     message: process.env.NODE_ENV === 'production'
       ? 'Erreur serveur'
       : err.message
   });
 });
 
-// ─────────────────────────────────────────────
+// ─────────────────────────────
 // START SERVER
 const PORT = process.env.PORT || 3000;
 
@@ -183,7 +187,7 @@ mongoose.connect(process.env.MONGO_URI, {
   console.log('✅ MongoDB connecté');
 
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 API running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
 
     const url = process.env.RENDER_EXTERNAL_URL
       || `http://localhost:${PORT}`;
