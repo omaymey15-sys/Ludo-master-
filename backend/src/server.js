@@ -1,158 +1,199 @@
 require('dotenv').config();
+
 const express    = require('express');
 const mongoose   = require('mongoose');
 const cors       = require('cors');
 const helmet     = require('helmet');
 const morgan     = require('morgan');
 const rateLimit  = require('express-rate-limit');
-const { Server } = require('socket.io');
 const http       = require('http');
+const { Server } = require('socket.io');
+
 const { startKeepAlive } = require('./utils/keepAlive');
 
+// Routes
 const authRouter        = require('./routes/auth');
 const paymentRouter     = require('./routes/payment');
 const competitionRouter = require('./routes/competition');
 const adminRouter       = require('./routes/admin');
 
-const app    = express();
+const app = express();
 const server = http.createServer(app);
-const io     = new Server(server, {
+
+const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] }
 });
 
-// ── Trust proxy (requis sur Render) ──────────────────────────
+// ─────────────────────────────────────────────
+// TRUST PROXY (Render obligatoire)
 app.set('trust proxy', 1);
 
-// ── Middlewares ───────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// MIDDLEWARES
 app.use(helmet({ contentSecurityPolicy: false }));
+
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',')
     : '*'
 }));
+
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting
+// Rate limit global API
 app.use('/api/', rateLimit({
-  windowMs : 15 * 60 * 1000,
-  max      : 200,
-  standardHeaders: true,
-  legacyHeaders  : false,
-  message  : { message: 'Trop de requêtes. Réessayez dans 15 min.' }
+  windowMs: 15 * 60 * 1000,
+  max: 200
 }));
+
 app.use('/api/auth/', rateLimit({
-  windowMs : 15 * 60 * 1000,
-  max      : 15,
-  message  : { message: 'Trop de tentatives de connexion.' }
+  windowMs: 15 * 60 * 1000,
+  max: 15
 }));
 
-// ── Health check (utilisé par Render + keep-alive) ────────────
-app.get('/health', (_, res) => res.json({
-  status  : 'ok',
-  env     : process.env.NODE_ENV,
-  uptime  : Math.floor(process.uptime()),
-  ts      : new Date().toISOString()
-}));
-
-// ── Routes API ────────────────────────────────────────────────
-app.use('/api/auth',         authRouter);
-app.use('/api/payment',      paymentRouter);
-app.use('/api/competitions', competitionRouter);
-app.use('/api/admin',        adminRouter);
-
-// 404
-app.use((req, res) =>
-  res.status(404).json({ message: `Route ${req.path} non trouvée` })
-);
-
-// Gestionnaire d'erreurs global
-app.use((err, req, res, _next) => {
-  console.error('[ERROR]', err.stack);
-  res.status(err.status || 500).json({
-    message: process.env.NODE_ENV === 'production'
-      ? 'Erreur interne du serveur'
-      : err.message
+// ─────────────────────────────────────────────
+// ROOT ROUTE (IMPORTANT)
+app.get('/', (req, res) => {
+  res.status(200).json({
+    name: "Ludo Master API",
+    status: "running",
+    version: "1.0.0"
   });
 });
 
-// ── Socket.IO — Matchmaking temps-réel ───────────────────────
+// HEALTH CHECK
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    uptime: process.uptime(),
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    time: new Date().toISOString()
+  });
+});
+
+// ─────────────────────────────────────────────
+// API ROUTES
+app.use('/api/auth', authRouter);
+app.use('/api/payment', paymentRouter);
+app.use('/api/competitions', competitionRouter);
+app.use('/api/admin', adminRouter);
+
+// ─────────────────────────────────────────────
+// SOCKET.IO (MATCHMAKING)
 const rooms = new Map();
 
 io.on('connection', (socket) => {
-  console.log(`🔌 ${socket.id} connecté`);
+  console.log('🔌 connecté:', socket.id);
 
-  socket.on('join_room', ({ competitionId, userId, username, color }) => {
+  socket.on('join_room', (data) => {
+    const { competitionId, userId, username, color } = data;
+
     socket.join(competitionId);
-    if (!rooms.has(competitionId)) rooms.set(competitionId, { players: [], ready: 0 });
+
+    if (!rooms.has(competitionId)) {
+      rooms.set(competitionId, { players: [], ready: 0 });
+    }
+
     const room = rooms.get(competitionId);
+
     if (!room.players.find(p => p.userId === userId)) {
       room.players.push({ socketId: socket.id, userId, username, color });
     }
-    io.to(competitionId).emit('room_update', { players: room.players });
+
+    io.to(competitionId).emit('room_update', room.players);
   });
 
   socket.on('player_ready', ({ competitionId }) => {
     const room = rooms.get(competitionId);
     if (!room) return;
-    room.ready = (room.ready || 0) + 1;
+
+    room.ready++;
+
     if (room.ready >= room.players.length && room.players.length >= 2) {
-      io.to(competitionId).emit('game_start', { players: room.players });
+      io.to(competitionId).emit('game_start', {
+        players: room.players
+      });
       room.ready = 0;
     }
   });
 
-  socket.on('dice_roll', ({ competitionId, userId, dice }) =>
-    socket.to(competitionId).emit('opponent_dice', { userId, dice }));
-
-  socket.on('piece_move', ({ competitionId, userId, pieceId, finalPos }) =>
-    socket.to(competitionId).emit('opponent_move', { userId, pieceId, finalPos }));
-
-  socket.on('game_over', ({ competitionId, ranking, totalTurns }) => {
-    io.to(competitionId).emit('game_result', { ranking, totalTurns });
-    rooms.delete(competitionId);
+  socket.on('dice_roll', (data) => {
+    socket.to(data.competitionId).emit('opponent_dice', data);
   });
 
-  socket.on('chat_msg', ({ competitionId, username, text }) =>
-    io.to(competitionId).emit('chat_msg', { username, text, ts: Date.now() }));
+  socket.on('piece_move', (data) => {
+    socket.to(data.competitionId).emit('opponent_move', data);
+  });
+
+  socket.on('game_over', (data) => {
+    io.to(data.competitionId).emit('game_result', data);
+    rooms.delete(data.competitionId);
+  });
+
+  socket.on('chat_msg', (data) => {
+    io.to(data.competitionId).emit('chat_msg', {
+      ...data,
+      ts: Date.now()
+    });
+  });
 
   socket.on('disconnect', () => {
-    console.log(`🔌 ${socket.id} déconnecté`);
-    rooms.forEach((room, compId) => {
+    console.log('❌ déconnecté:', socket.id);
+
+    rooms.forEach((room, id) => {
       room.players = room.players.filter(p => p.socketId !== socket.id);
-      io.to(compId).emit('room_update', { players: room.players });
+      io.to(id).emit('room_update', room.players);
     });
   });
 });
 
-// ── Démarrage ─────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// 404 HANDLER
+app.use((req, res) => {
+  res.status(404).json({
+    error: "NOT_FOUND",
+    message: `Route ${req.method} ${req.path} non trouvée`
+  });
+});
+
+// ─────────────────────────────────────────────
+// ERROR HANDLER
+app.use((err, req, res, next) => {
+  console.error(err);
+
+  res.status(err.status || 500).json({
+    message: process.env.NODE_ENV === 'production'
+      ? 'Erreur serveur'
+      : err.message
+  });
+});
+
+// ─────────────────────────────────────────────
+// START SERVER
 const PORT = process.env.PORT || 3000;
 
-mongoose
-  .connect(process.env.MONGO_URI, {
-    serverSelectionTimeoutMS: 10000,
-    socketTimeoutMS         : 45000,
-  })
-  .then(() => {
-    console.log('✅ MongoDB connecté');
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Ludo Master API — port ${PORT} [${process.env.NODE_ENV}]`);
-      // Démarrer le keep-alive (évite le sleep sur Render Free)
-      const selfUrl = process.env.RENDER_EXTERNAL_URL
-                   || `http://localhost:${PORT}`;
-      startKeepAlive(selfUrl);
-    });
-  })
-  .catch(err => {
-    console.error('❌ MongoDB erreur:', err.message);
-    process.exit(1);
-  });
+mongoose.connect(process.env.MONGO_URI, {
+  serverSelectionTimeoutMS: 10000,
+  socketTimeoutMS: 45000
+})
+.then(() => {
+  console.log('✅ MongoDB connecté');
 
-// Gestion propre des arrêts
-process.on('SIGTERM', () => {
-  console.log('⚠️  SIGTERM reçu — arrêt propre');
-  server.close(() => { mongoose.connection.close(); process.exit(0); });
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 API running on port ${PORT}`);
+
+    const url = process.env.RENDER_EXTERNAL_URL
+      || `http://localhost:${PORT}`;
+
+    startKeepAlive(url);
+  });
+})
+.catch(err => {
+  console.error('❌ MongoDB error:', err.message);
+  process.exit(1);
 });
 
 module.exports = { app, io };
