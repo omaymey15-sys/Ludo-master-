@@ -24,13 +24,13 @@ object Config {
 
         // 🚀 Production Render.com
         //   Remplacer par ton URL Render exacte
-        Env.PROD -> "https://ludo-master-api.onrender.com/api"
+        Env.PROD -> "https://ludo-master-apii.onrender.com"
     }
 
     // ── URL WebSocket (Socket.IO) ──────────────────────────
     val SOCKET_BASE: String get() = when (ENV) {
         Env.DEV  -> "http://10.0.2.2:3000"
-        Env.PROD -> "https://ludo-master-api.onrender.com"
+        Env.PROD -> "https://ludo-master-apii.onrender.com"
     }
 
     // ── Constantes de l'application ───────────────────────
