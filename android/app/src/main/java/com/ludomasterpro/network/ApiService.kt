@@ -1,10 +1,5 @@
 package com.ludomasterpro.network
 
-// ══════════════════════════════════════════════════════════════
-//  ApiService.kt — Client HTTP vers le backend Render
-//  Utilise HttpURLConnection (pas de dépendance externe)
-// ══════════════════════════════════════════════════════════════
-
 import com.ludomasterpro.Config
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,118 +10,153 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
-// ── Data classes réponses ─────────────────────────────────────
+// ── DATA ───────────────────────────────────────────────
 data class AuthResponse(
-    val token:    String,
+    val token: String,
     val username: String,
-    val balance:  Double,
-    val role:     String
+    val balance: Double,
+    val role: String
 )
 
 data class ApiResult<T>(
     val success: Boolean,
-    val data:    T?      = null,
-    val error:   String? = null
+    val data: T? = null,
+    val error: String? = null
 )
 
-// ── Service principal ─────────────────────────────────────────
+// ── SERVICE ────────────────────────────────────────────
 object ApiService {
 
     private var authToken: String = ""
 
     fun setToken(token: String) { authToken = token }
-    fun clearToken()             { authToken = "" }
-    fun getToken(): String       = authToken
+    fun clearToken() { authToken = "" }
+    fun getToken(): String = authToken
     fun isLoggedIn() = authToken.isNotEmpty()
 
-    // ── Connexion ────────────────────────────────────────────
+    // ─────────────────────────────────────────────
+    // LOGIN
+    // ─────────────────────────────────────────────
     suspend fun login(email: String, password: String): ApiResult<AuthResponse> =
         withContext(Dispatchers.IO) {
             try {
                 val body = JSONObject().apply {
-                    put("email", email); put("password", password)
+                    put("email", email)
+                    put("password", password)
                 }
+
                 val resp = post("/auth/login", body)
+
                 if (resp.has("token")) {
                     authToken = resp.getString("token")
+
+                    val user = resp.optJSONObject("user")
+
                     ApiResult(
                         success = true,
-                        data    = AuthResponse(
-                            token    = authToken,
-                            username = resp.optJSONObject("user")?.optString("username") ?: "",
-                            balance  = resp.optJSONObject("user")?.optDouble("balance", 0.0) ?: 0.0,
-                            role     = resp.optJSONObject("user")?.optString("role", "player") ?: "player"
+                        data = AuthResponse(
+                            token = authToken,
+                            username = user?.optString("username") ?: "",
+                            balance = user?.optJSONObject("wallet")
+                                ?.optDouble("balance", 0.0) ?: 0.0,
+                            role = user?.optString("role", "player") ?: "player"
                         )
                     )
                 } else {
-                    ApiResult(false, error = resp.optString("message", "Erreur connexion"))
+                    ApiResult(false, error = resp.optString("message", "Erreur login"))
                 }
             } catch (e: Exception) {
                 ApiResult(false, error = e.message ?: "Erreur réseau")
             }
         }
 
-    // ── Inscription ──────────────────────────────────────────
+    // ─────────────────────────────────────────────
+    // REGISTER
+    // ─────────────────────────────────────────────
     suspend fun register(
-        username: String, email: String, phone: String, password: String
-    ): ApiResult<AuthResponse> = withContext(Dispatchers.IO) {
-        try {
-            val body = JSONObject().apply {
-                put("username", username); put("email", email)
-                put("phone", phone);       put("password", password)
-            }
-            val resp = post("/auth/register", body)
-            if (resp.has("token")) {
-                authToken = resp.getString("token")
-                ApiResult(true, AuthResponse(
-                    token    = authToken,
-                    username = username,
-                    balance  = 0.0,
-                    role     = "player"
-                ))
-            } else {
-                ApiResult(false, error = resp.optString("message"))
-            }
-        } catch (e: Exception) {
-            ApiResult(false, error = e.message)
-        }
-    }
-
-    // ── Profil utilisateur ───────────────────────────────────
-    suspend fun getProfile(): ApiResult<JSONObject> = withContext(Dispatchers.IO) {
-        try {
-            val resp = get("/auth/me")
-            ApiResult(true, resp)
-        } catch (e: Exception) {
-            ApiResult(false, error = e.message)
-        }
-    }
-
-    // ── Dépôt ────────────────────────────────────────────────
-    suspend fun deposit(amount: Double, phone: String, operator: String): ApiResult<JSONObject> =
+        username: String,
+        email: String,
+        phone: String,
+        password: String
+    ): ApiResult<AuthResponse> =
         withContext(Dispatchers.IO) {
             try {
                 val body = JSONObject().apply {
-                    put("amount", amount); put("phone", phone); put("operator", operator)
+                    put("username", username)
+                    put("email", email)
+                    put("phone", phone)
+                    put("password", password)
                 }
-                val resp = post("/payment/deposit", body)
-                if (resp.has("txId"))
-                    ApiResult(true, resp)
-                else
+
+                val resp = post("/auth/register", body)
+
+                if (resp.has("token")) {
+                    authToken = resp.getString("token")
+
+                    ApiResult(
+                        true,
+                        AuthResponse(
+                            token = authToken,
+                            username = username,
+                            balance = 0.0,
+                            role = "player"
+                        )
+                    )
+                } else {
                     ApiResult(false, error = resp.optString("message"))
+                }
             } catch (e: Exception) {
                 ApiResult(false, error = e.message)
             }
         }
 
-    // ── Retrait ──────────────────────────────────────────────
+    // ─────────────────────────────────────────────
+    // PROFILE
+    // ─────────────────────────────────────────────
+    suspend fun getProfile(): ApiResult<JSONObject> =
+        withContext(Dispatchers.IO) {
+            try {
+                ApiResult(true, get("/auth/me"))
+            } catch (e: Exception) {
+                ApiResult(false, error = e.message)
+            }
+        }
+
+    // ─────────────────────────────────────────────
+    // DEPOSIT
+    // ─────────────────────────────────────────────
+    suspend fun deposit(amount: Double, phone: String, operator: String): ApiResult<JSONObject> =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = JSONObject().apply {
+                    put("amount", amount)
+                    put("phone", phone)
+                    put("operator", operator)
+                }
+
+                val resp = post("/payment/deposit", body)
+
+                if (resp.has("txId")) ApiResult(true, resp)
+                else ApiResult(false, error = resp.optString("message"))
+            } catch (e: Exception) {
+                ApiResult(false, error = e.message)
+            }
+        }
+
+    // ─────────────────────────────────────────────
+    // WITHDRAW
+    // ─────────────────────────────────────────────
     suspend fun withdraw(amount: Double, phone: String, operator: String): ApiResult<JSONObject> =
         withContext(Dispatchers.IO) {
             try {
                 val body = JSONObject().apply {
-                    put("amount", amount); put("phone", phone); put("operator", operator)
+                    put("amount", amount)
+                    put("phone", phone)
+                    put("operator", operator)
                 }
+
                 val resp = post("/payment/withdraw", body)
+
                 if (resp.has("txId") || resp.has("newBalance"))
                     ApiResult(true, resp)
                 else
@@ -136,76 +166,95 @@ object ApiService {
             }
         }
 
-    // ── Historique transactions ───────────────────────────────
-    suspend fun getTransactions(page: Int = 1): ApiResult<JSONObject> =
-        withContext(Dispatchers.IO) {
-            try { ApiResult(true, get("/payment/history?page=$page&limit=20")) }
-            catch (e: Exception) { ApiResult(false, error = e.message) }
-        }
-
-    // ── Compétitions ouvertes ────────────────────────────────
+    // ─────────────────────────────────────────────
+    // COMPETITIONS
+    // ─────────────────────────────────────────────
     suspend fun getCompetitions(): ApiResult<JSONObject> =
         withContext(Dispatchers.IO) {
-            try { ApiResult(true, get("/competitions?status=open")) }
-            catch (e: Exception) { ApiResult(false, error = e.message) }
-        }
-
-    // ── Rejoindre une compétition ────────────────────────────
-    suspend fun joinCompetition(compId: String, color: String): ApiResult<JSONObject> =
-        withContext(Dispatchers.IO) {
             try {
-                val body = JSONObject().apply { put("color", color) }
-                val resp = post("/competitions/$compId/join", body)
-                if (resp.has("prizePool") || resp.has("message"))
-                    ApiResult(true, resp)
-                else
-                    ApiResult(false, error = resp.optString("message"))
+                ApiResult(true, get("/competitions?status=open"))
             } catch (e: Exception) {
                 ApiResult(false, error = e.message)
             }
         }
 
-    // ══════════════════════════════════════════════════════════
-    //  Helpers HTTP bas niveau
-    // ══════════════════════════════════════════════════════════
+    suspend fun joinCompetition(compId: String, color: String): ApiResult<JSONObject> =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = JSONObject().apply {
+                    put("color", color)
+                }
+
+                val resp = post("/competitions/$compId/join", body)
+
+                ApiResult(true, resp)
+            } catch (e: Exception) {
+                ApiResult(false, error = e.message)
+            }
+        }
+
+    // ─────────────────────────────────────────────
+    // HTTP GET
+    // ─────────────────────────────────────────────
     private fun get(path: String): JSONObject {
-        val url  = URL("${Config.API_BASE}$path")
-        val conn = (url.openConnection() as HttpURLConnection).apply {
+        val conn = (URL(Config.API_BASE + path).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = Config.CONNECT_TIMEOUT.toInt()
-            readTimeout    = Config.READ_TIMEOUT.toInt()
-            setRequestProperty("Content-Type",   "application/json")
-            setRequestProperty("Accept",          "application/json")
-            if (authToken.isNotEmpty())
+            readTimeout = Config.READ_TIMEOUT.toInt()
+            setRequestProperty("Accept", "application/json")
+
+            if (authToken.isNotEmpty()) {
                 setRequestProperty("Authorization", "Bearer $authToken")
+            }
         }
-        return readResponse(conn)
+
+        return read(conn)
     }
 
+    // ─────────────────────────────────────────────
+    // HTTP POST
+    // ─────────────────────────────────────────────
     private fun post(path: String, body: JSONObject): JSONObject {
-        val url  = URL("${Config.API_BASE}$path")
-        val conn = (url.openConnection() as HttpURLConnection).apply {
+        val conn = (URL(Config.API_BASE + path).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = Config.CONNECT_TIMEOUT.toInt()
-            readTimeout    = Config.READ_TIMEOUT.toInt()
+            readTimeout = Config.READ_TIMEOUT.toInt()
             doOutput = true
-            setRequestProperty("Content-Type",   "application/json")
-            setRequestProperty("Accept",          "application/json")
-            if (authToken.isNotEmpty())
+
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "application/json")
+
+            if (authToken.isNotEmpty()) {
                 setRequestProperty("Authorization", "Bearer $authToken")
+            }
         }
+
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
             it.write(body.toString())
-            it.flush()
         }
-        return readResponse(conn)
+
+        return read(conn)
     }
 
-    private fun readResponse(conn: HttpURLConnection): JSONObject {
+    // ─────────────────────────────────────────────
+    // SAFE RESPONSE
+    // ─────────────────────────────────────────────
+    private fun read(conn: HttpURLConnection): JSONObject {
         val code = conn.responseCode
-        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-        val raw = BufferedReader(InputStreamReader(stream, Charsets.UTF_8))
+
+        val stream = conn.inputStream ?: conn.errorStream
+
+        val text = BufferedReader(InputStreamReader(stream ?: return JSONObject()))
             .use { it.readText() }
-        return if (raw.isBlank()) JSONObject() else JSONObject(raw)
+
+        if (code !in 200..299) {
+            return JSONObject().apply {
+                put("success", false)
+                put("message", text)
+                put("status", code)
+            }
+        }
+
+        return if (text.isBlank()) JSONObject() else JSONObject(text)
     }
 }
