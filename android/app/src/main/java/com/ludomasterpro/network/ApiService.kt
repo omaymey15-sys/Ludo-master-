@@ -1,5 +1,10 @@
 package com.ludomasterpro.network
 
+// ══════════════════════════════════════════════════════════════
+//  ApiService.kt — Client HTTP vers le backend Render
+//  Utilise HttpURLConnection (pas de dépendance externe)
+// ══════════════════════════════════════════════════════════════
+
 import com.ludomasterpro.Config
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -8,174 +13,261 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 
-// ── Data classes ─────────────────────────────
+// ── Data classes réponses ─────────────────────────────────────
 data class AuthResponse(
-    val token: String,
+    val token:    String,
     val username: String,
-    val balance: Double,
-    val role: String
+    val balance:  Double,
+    val role:     String
 )
 
 data class ApiResult<T>(
     val success: Boolean,
-    val data: T? = null,
-    val error: String? = null
+    val data:    T?      = null,
+    val error:   String? = null
 )
 
-// ── Service API ─────────────────────────────
+// ── Service principal ─────────────────────────────────────────
 object ApiService {
 
+    @Volatile
     private var authToken: String = ""
 
     fun setToken(token: String) { authToken = token }
-    fun clearToken() { authToken = "" }
-    fun getToken(): String = authToken
+    fun clearToken()             { authToken = "" }
+    fun getToken(): String       = authToken
     fun isLoggedIn() = authToken.isNotEmpty()
 
-    // ── LOGIN ─────────────────────────────
+    // ── Connexion ────────────────────────────────────────────
     suspend fun login(email: String, password: String): ApiResult<AuthResponse> =
         withContext(Dispatchers.IO) {
             try {
                 val body = JSONObject().apply {
-                    put("email", email)
-                    put("password", password)
+                    put("email", email); put("password", password)
                 }
-
                 val resp = post("/auth/login", body)
-
-                if (resp.optString("token").isNotEmpty()) {
-
-                    val user = resp.optJSONObject("user")
-
-                    val result = AuthResponse(
-                        token = resp.optString("token"),
-                        username = user?.optString("username", "") ?: "",
-                        balance = user?.optDouble("balance", 0.0) ?: 0.0,
-                        role = user?.optString("role", "player") ?: "player"
+                if (resp.has("token")) {
+                    authToken = resp.getString("token")
+                    ApiResult(
+                        success = true,
+                        data    = AuthResponse(
+                            token    = authToken,
+                            username = resp.optJSONObject("user")?.optString("username") ?: "",
+                            balance  = resp.optJSONObject("user")?.optDouble("balance", 0.0) ?: 0.0,
+                            role     = resp.optJSONObject("user")?.optString("role", "player") ?: "player"
+                        )
                     )
-
-                    authToken = result.token
-
-                    ApiResult(true, result)
                 } else {
-                    ApiResult(false, error = resp.optString("message", "Login failed"))
+                    ApiResult(false, error = resp.optString("message", "Erreur connexion"))
                 }
-
             } catch (e: Exception) {
-                ApiResult(false, error = e.message ?: "Network error")
+                ApiResult(false, error = e.message ?: "Erreur réseau")
             }
         }
 
-    // ── REGISTER ──────────────────────────
+    // ── Inscription ──────────────────────────────────────────
     suspend fun register(
-        username: String,
-        email: String,
-        phone: String,
-        password: String
-    ): ApiResult<AuthResponse> =
+        username: String, email: String, phone: String, password: String
+    ): ApiResult<AuthResponse> = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject().apply {
+                put("username", username); put("email", email)
+                put("phone", phone);       put("password", password)
+            }
+            val resp = post("/auth/register", body)
+            if (resp.has("token")) {
+                authToken = resp.getString("token")
+                ApiResult(true, AuthResponse(
+                    token    = authToken,
+                    username = username,
+                    balance  = 0.0,
+                    role     = "player"
+                ))
+            } else {
+                ApiResult(false, error = resp.optString("message"))
+            }
+        } catch (e: Exception) {
+            ApiResult(false, error = e.message)
+        }
+    }
+
+    // ── Profil utilisateur ───────────────────────────────────
+    suspend fun getProfile(): ApiResult<JSONObject> = withContext(Dispatchers.IO) {
+        try {
+            val resp = get("/auth/me")
+            ApiResult(true, resp)
+        } catch (e: UnauthorizedException) {
+            clearToken()
+            ApiResult(false, error = "Session expirée")
+        } catch (e: Exception) {
+            ApiResult(false, error = e.message)
+        }
+    }
+
+    // ── Dépôt ────────────────────────────────────────────────
+    suspend fun deposit(amount: Double, phone: String, operator: String): ApiResult<JSONObject> =
         withContext(Dispatchers.IO) {
             try {
                 val body = JSONObject().apply {
-                    put("username", username)
-                    put("email", email)
-                    put("phone", phone)
-                    put("password", password)
+                    put("amount", amount); put("phone", phone); put("operator", operator)
                 }
-
-                val resp = post("/auth/register", body)
-
-                if (resp.optString("token").isNotEmpty()) {
-
-                    val user = resp.optJSONObject("user")
-
-                    val result = AuthResponse(
-                        token = resp.optString("token"),
-                        username = user?.optString("username", username) ?: username,
-                        balance = user?.optDouble("balance", 0.0) ?: 0.0,
-                        role = user?.optString("role", "player") ?: "player"
-                    )
-
-                    authToken = result.token
-
-                    ApiResult(true, result)
-                } else {
-                    ApiResult(false, error = resp.optString("message", "Register failed"))
-                }
-
-            } catch (e: Exception) {
-                ApiResult(false, error = e.message ?: "Network error")
-            }
-        }
-
-    // ── PROFILE ───────────────────────────
-    suspend fun getProfile(): ApiResult<JSONObject> =
-        withContext(Dispatchers.IO) {
-            try {
-                ApiResult(true, get("/auth/me"))
+                val resp = post("/payment/deposit", body)
+                if (resp.has("txId"))
+                    ApiResult(true, resp)
+                else
+                    ApiResult(false, error = resp.optString("message"))
+            } catch (e: UnauthorizedException) {
+                clearToken()
+                ApiResult(false, error = "Session expirée")
             } catch (e: Exception) {
                 ApiResult(false, error = e.message)
             }
         }
 
-    // ── HTTP GET ───────────────────────────
+    // ── Retrait ──────────────────────────────────────────────
+    suspend fun withdraw(amount: Double, phone: String, operator: String): ApiResult<JSONObject> =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = JSONObject().apply {
+                    put("amount", amount); put("phone", phone); put("operator", operator)
+                }
+                val resp = post("/payment/withdraw", body)
+                if (resp.has("txId") || resp.has("newBalance"))
+                    ApiResult(true, resp)
+                else
+                    ApiResult(false, error = resp.optString("message"))
+            } catch (e: UnauthorizedException) {
+                clearToken()
+                ApiResult(false, error = "Session expirée")
+            } catch (e: Exception) {
+                ApiResult(false, error = e.message)
+            }
+        }
+
+    // ── Historique transactions ───────────────────────────────
+    suspend fun getTransactions(page: Int = 1): ApiResult<JSONObject> =
+        withContext(Dispatchers.IO) {
+            try {
+                ApiResult(true, get("/payment/history?page=$page&limit=20"))
+            } catch (e: UnauthorizedException) {
+                clearToken()
+                ApiResult(false, error = "Session expirée")
+            } catch (e: Exception) {
+                ApiResult(false, error = e.message)
+            }
+        }
+
+    // ── Compétitions ouvertes ────────────────────────────────
+    suspend fun getCompetitions(): ApiResult<JSONObject> =
+        withContext(Dispatchers.IO) {
+            try {
+                ApiResult(true, get("/competitions?status=open"))
+            } catch (e: Exception) {
+                ApiResult(false, error = e.message)
+            }
+        }
+
+    // ── Rejoindre une compétition ────────────────────────────
+    suspend fun joinCompetition(compId: String, color: String): ApiResult<JSONObject> =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = JSONObject().apply { put("color", color) }
+                val resp = post("/competitions/$compId/join", body)
+                if (resp.has("prizePool") || resp.has("message"))
+                    ApiResult(true, resp)
+                else
+                    ApiResult(false, error = resp.optString("message"))
+            } catch (e: UnauthorizedException) {
+                clearToken()
+                ApiResult(false, error = "Session expirée")
+            } catch (e: Exception) {
+                ApiResult(false, error = e.message)
+            }
+        }
+
+    // ══════════════════════════════════════════════════════════
+    //  Helpers HTTP bas niveau
+    // ══════════════════════════════════════════════════════════
+
+    class UnauthorizedException(message: String) : Exception(message)
+
     private fun get(path: String): JSONObject {
-        val conn = (URL(Config.API_BASE + path).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("Content-Type", "application/json")
-            if (authToken.isNotEmpty()) {
-                setRequestProperty("Authorization", "Bearer $authToken")
+        var conn: HttpURLConnection? = null
+        try {
+            val url = URL("${Config.API_BASE}$path")
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = Config.CONNECT_TIMEOUT.toInt()
+                readTimeout    = Config.READ_TIMEOUT.toInt()
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept",        "application/json")
+                if (authToken.isNotEmpty())
+                    setRequestProperty("Authorization", "Bearer $authToken")
             }
+            return readResponse(conn)
+        } catch (e: SocketTimeoutException) {
+            throw Exception("Délai de connexion dépassé")
+        } finally {
+            conn?.disconnect()
         }
-
-        return readResponse(conn)
     }
 
-    // ── HTTP POST ──────────────────────────
     private fun post(path: String, body: JSONObject): JSONObject {
-        val conn = (URL(Config.API_BASE + path).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            doOutput = true
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("Content-Type", "application/json")
-            if (authToken.isNotEmpty()) {
-                setRequestProperty("Authorization", "Bearer $authToken")
+        var conn: HttpURLConnection? = null
+        try {
+            val url = URL("${Config.API_BASE}$path")
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = Config.CONNECT_TIMEOUT.toInt()
+                readTimeout    = Config.READ_TIMEOUT.toInt()
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept",        "application/json")
+                if (authToken.isNotEmpty())
+                    setRequestProperty("Authorization", "Bearer $authToken")
             }
+            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
+                it.write(body.toString())
+                it.flush()
+            }
+            return readResponse(conn)
+        } catch (e: SocketTimeoutException) {
+            throw Exception("Délai de connexion dépassé")
+        } finally {
+            conn?.disconnect()
         }
-
-        OutputStreamWriter(conn.outputStream).use {
-            it.write(body.toString())
-            it.flush()
-        }
-
-        return readResponse(conn)
     }
 
-    // ── SAFE JSON PARSER (IMPORTANT FIX) ──
     private fun readResponse(conn: HttpURLConnection): JSONObject {
-        val stream = try {
-            if (conn.responseCode in 200..299)
-                conn.inputStream
-            else
-                conn.errorStream
-        } catch (e: Exception) {
-            conn.errorStream
+        val code = conn.responseCode
+
+        // Gestion 401 Unauthorized
+        if (code == 401) {
+            throw UnauthorizedException("Non autorisé")
         }
 
-        val raw = BufferedReader(InputStreamReader(stream ?: conn.errorStream))
-            .use { it.readText() }
+        // Gestion 500 Internal Server Error
+        if (code >= 500) {
+            throw Exception("Erreur serveur (${code})")
+        }
 
-        return try {
-            JSONObject(raw)
+        val raw = try {
+            val stream = if (code in 200..299) {
+                conn.inputStream
+            } else {
+                conn.errorStream
+            }
+            stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
         } catch (e: Exception) {
-
-            // 🔥 IMPORTANT: évite crash si backend renvoie texte
-            JSONObject().apply {
-                put("success", false)
-                put("message", raw)
+            when {
+                e is UnauthorizedException -> throw e
+                else -> ""
             }
         }
+
+        return if (raw.isBlank()) JSONObject() else JSONObject(raw)
     }
 }
