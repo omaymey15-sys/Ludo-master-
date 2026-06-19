@@ -16,8 +16,37 @@ const SECRET       = process.env.WONYAPAY_SECRET;
 const MERCHANT_ID  = process.env.WONYAPAY_MERCHANT_ID;
 const CALLBACK_URL = process.env.WONYAPAY_CALLBACK_URL;
 
+// ── Vérification de la configuration au démarrage ─────────────
+// Évite un crash silencieux (502) plus tard : on prévient
+// clairement dans les logs Render si les clés manquent.
+const MISSING_CONFIG = [];
+if (!API_KEY)     MISSING_CONFIG.push('WONYAPAY_API_KEY');
+if (!SECRET)       MISSING_CONFIG.push('WONYAPAY_SECRET');
+if (!MERCHANT_ID)  MISSING_CONFIG.push('WONYAPAY_MERCHANT_ID');
+if (!CALLBACK_URL) MISSING_CONFIG.push('WONYAPAY_CALLBACK_URL');
+
+if (MISSING_CONFIG.length > 0) {
+  console.error(
+    `⚠️  WonyaPay NON configuré — variables manquantes : ${MISSING_CONFIG.join(', ')}\n` +
+    `   → Allez sur Render Dashboard → Environment → ajoutez ces variables.\n` +
+    `   → Les dépôts/retraits échoueront avec un message explicite tant que ce n'est pas fait.`
+  );
+}
+
+function assertConfigured() {
+  if (MISSING_CONFIG.length > 0) {
+    const err = new Error(
+      `WonyaPay non configuré sur le serveur (variables manquantes : ${MISSING_CONFIG.join(', ')}). ` +
+      `Contactez l'administrateur.`
+    );
+    err.status = 503; // Service Unavailable — plus clair qu'un 502
+    throw err;
+  }
+}
+
 // ── Génération de signature HMAC-SHA256 ───────────────────────
 function sign(payload) {
+  assertConfigured();
   return crypto
     .createHmac('sha256', SECRET)
     .update(JSON.stringify(payload))
@@ -48,6 +77,7 @@ client.interceptors.response.use(
 //  Le client reçoit une demande de paiement sur son téléphone
 // ══════════════════════════════════════════════════════════════
 async function initiateDeposit({ userId, phone, amount, operator, description }) {
+  assertConfigured();
   const orderId   = `DEP-${userId}-${uuid().slice(0,8).toUpperCase()}`;
   const payload   = {
     order_id    : orderId,
@@ -75,6 +105,7 @@ async function initiateDeposit({ userId, phone, amount, operator, description })
 //  On envoie l'argent directement sur le mobile money du joueur
 // ══════════════════════════════════════════════════════════════
 async function initiateWithdraw({ userId, phone, amount, operator, description }) {
+  assertConfigured();
   const orderId = `WIT-${userId}-${uuid().slice(0,8).toUpperCase()}`;
   const payload = {
     order_id    : orderId,
@@ -151,4 +182,8 @@ module.exports = {
   verifyCallback,
   normalizePhone,
   detectOperator,
+  assertConfigured,
+  isConfigured: () => MISSING_CONFIG.length === 0,
+  missingConfig: () => [...MISSING_CONFIG],
 };
+    
