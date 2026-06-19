@@ -24,29 +24,31 @@ const withdrawRules = [
 //  POST /api/payment/deposit — Initier un dépôt
 // ══════════════════════════════════════════════════════════════
 router.post('/deposit', auth, depositRules, async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-  const { amount, phone, operator } = req.body;
-  const user = await User.findById(req.user.id);
-
-  if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
-  if (amount > Number(process.env.MAX_DEPOSIT || 1000000))
-    return res.status(400).json({ message: 'Montant trop élevé' });
-
-  // Créer la transaction en attente
-  const tx = await Transaction.create({
-    user:          user._id,
-    type:          'deposit',
-    amount,
-    operator,
-    momoPhone:     wonyapay.normalizePhone(phone),
-    status:        'pending',
-    balanceBefore: user.wallet.balance,
-    description:   `Dépôt via ${operator}`,
-  });
+  let tx; // déclaré ici pour être accessible dans le catch global
 
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { amount, phone, operator } = req.body;
+    const user = await User.findById(req.user.id);
+
+    if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
+    if (amount > Number(process.env.MAX_DEPOSIT || 1000000))
+      return res.status(400).json({ message: 'Montant trop élevé' });
+
+    // Créer la transaction en attente
+    tx = await Transaction.create({
+      user:          user._id,
+      type:          'deposit',
+      amount,
+      operator,
+      momoPhone:     wonyapay.normalizePhone(phone),
+      status:        'pending',
+      balanceBefore: user.wallet.balance,
+      description:   `Dépôt via ${operator}`,
+    });
+
     const result = await wonyapay.initiateDeposit({
       userId:      user._id.toString(),
       phone,
@@ -55,7 +57,7 @@ router.post('/deposit', auth, depositRules, async (req, res) => {
       description: `Dépôt Ludo Master #${tx._id}`,
     });
 
-    tx.wonyaRef    = result.wonyaRef;
+    tx.wonyaRef     = result.wonyaRef;
     tx.wonyaOrderId = result.orderId;
     await tx.save();
 
@@ -67,9 +69,24 @@ router.post('/deposit', auth, depositRules, async (req, res) => {
       status:     result.status,
       instruction:'Confirmez le paiement sur votre téléphone',
     });
+
   } catch (err) {
-    tx.status = 'failed'; tx.failReason = err.message; await tx.save();
-    res.status(502).json({ message: `Erreur paiement: ${err.message}` });
+    // Marquer la transaction comme échouée si elle a été créée
+    if (tx) {
+      try { tx.status = 'failed'; tx.failReason = err.message; await tx.save(); }
+      catch (saveErr) { console.error('Impossible de marquer la tx en failed:', saveErr.message); }
+    }
+
+    console.error('[POST /payment/deposit] Erreur:', err.message);
+
+    // 503 = service WonyaPay indisponible/non configuré (erreur claire)
+    // 502 = erreur réseau imprévue
+    const status = err.status || 502;
+    res.status(status).json({
+      message: status === 503
+        ? err.message
+        : `Erreur paiement : ${err.message}`,
+    });
   }
 });
 
@@ -77,35 +94,41 @@ router.post('/deposit', auth, depositRules, async (req, res) => {
 //  POST /api/payment/withdraw — Initier un retrait
 // ══════════════════════════════════════════════════════════════
 router.post('/withdraw', auth, withdrawRules, async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-  const { amount, phone, operator } = req.body;
-  const user = await User.findById(req.user.id);
-  if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
-
-  if (user.wallet.balance < amount)
-    return res.status(400).json({ message: 'Solde insuffisant' });
-
-  // Bloquer le solde immédiatement
-  const before = user.wallet.balance;
-  user.wallet.balance -= amount;
-  user.wallet.lastWithdraw = new Date();
-  await user.save();
-
-  const tx = await Transaction.create({
-    user:          user._id,
-    type:          'withdraw',
-    amount,
-    operator,
-    momoPhone:     wonyapay.normalizePhone(phone),
-    status:        'pending',
-    balanceBefore: before,
-    balanceAfter:  user.wallet.balance,
-    description:   `Retrait via ${operator}`,
-  });
+  let tx, user, before;
 
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    // FIX : vérifier la config WonyaPay AVANT de toucher au solde,
+    // pour ne jamais débiter un compte si le service est indisponible.
+    wonyapay.assertConfigured?.();
+
+    const { amount, phone, operator } = req.body;
+    user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
+
+    if (user.wallet.balance < amount)
+      return res.status(400).json({ message: 'Solde insuffisant' });
+
+    // Bloquer le solde immédiatement
+    before = user.wallet.balance;
+    user.wallet.balance -= amount;
+    user.wallet.lastWithdraw = new Date();
+    await user.save();
+
+    tx = await Transaction.create({
+      user:          user._id,
+      type:          'withdraw',
+      amount,
+      operator,
+      momoPhone:     wonyapay.normalizePhone(phone),
+      status:        'pending',
+      balanceBefore: before,
+      balanceAfter:  user.wallet.balance,
+      description:   `Retrait via ${operator}`,
+    });
+
     const result = await wonyapay.initiateWithdraw({
       userId: user._id.toString(),
       phone, amount, operator,
@@ -118,17 +141,36 @@ router.post('/withdraw', auth, withdrawRules, async (req, res) => {
     await tx.save();
 
     res.json({
-      message:  'Retrait en cours',
-      txId:     tx._id,
-      wonyaRef: result.wonyaRef,
+      message:    'Retrait en cours',
+      txId:       tx._id,
+      wonyaRef:   result.wonyaRef,
       amount,
       newBalance: user.wallet.balance,
     });
+
   } catch (err) {
-    // Rembourser en cas d'échec
-    user.wallet.balance += amount; await user.save();
-    tx.status = 'failed'; tx.failReason = err.message; await tx.save();
-    res.status(502).json({ message: `Erreur retrait: ${err.message}` });
+    // Rembourser uniquement si le solde a effectivement été débité
+    if (user && before !== undefined) {
+      try {
+        user.wallet.balance = before;
+        await user.save();
+      } catch (saveErr) {
+        console.error('Échec remboursement après erreur withdraw:', saveErr.message);
+      }
+    }
+    if (tx) {
+      try { tx.status = 'failed'; tx.failReason = err.message; await tx.save(); }
+      catch (saveErr) { console.error('Impossible de marquer la tx en failed:', saveErr.message); }
+    }
+
+    console.error('[POST /payment/withdraw] Erreur:', err.message);
+
+    const status = err.status || 502;
+    res.status(status).json({
+      message: status === 503
+        ? err.message
+        : `Erreur retrait : ${err.message}`,
+    });
   }
 });
 
@@ -224,3 +266,4 @@ router.get('/history', auth, async (req, res) => {
 });
 
 module.exports = router;
+      
