@@ -146,4 +146,106 @@ router.get('/setup-status', async (_req, res) => {
   const adminExists = await User.exists({ role: 'admin' });
   res.json({ adminExists: !!adminExists });
 });
-  
+
+// ══════════════════════════════════════════════════════════════
+//  POST /api/auth/promote-admin
+//  ─────────────────────────────────────────────────────────────
+//  Solution de secours : si un compte existe déjà avec l'email
+//  fourni (créé lors d'une tentative précédente de setup-admin
+//  qui a échoué en cours de route) ET qu'aucun admin n'existe
+//  encore, ce endpoint le PROMEUT en admin au lieu d'en recréer
+//  un nouveau. Évite l'erreur "déjà utilisé" en boucle.
+//
+//  Mêmes règles de sécurité que setup-admin :
+//   • Ne fonctionne que si aucun admin n'existe encore
+//   • Nécessite la même clé ADMIN_SETUP_KEY
+// ══════════════════════════════════════════════════════════════
+router.post('/promote-admin', [
+  body('email').isEmail().normalizeEmail().withMessage('Email invalide'),
+  body('password').notEmpty().withMessage('Mot de passe requis'),
+  body('setupKey').notEmpty().withMessage('Clé de setup requise'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
+
+    const SETUP_KEY = process.env.ADMIN_SETUP_KEY || 'ludomaster-setup-2024';
+    if (req.body.setupKey !== SETUP_KEY)
+      return res.status(403).json({ message: 'Clé de setup incorrecte' });
+
+    // Vérifier qu'aucun admin n'existe déjà
+    const existingAdmin = await User.findOne({ role: 'admin' });
+    if (existingAdmin)
+      return res.status(403).json({
+        message: 'Un administrateur existe déjà.',
+        hint   : 'Connectez-vous normalement avec ce compte.'
+      });
+
+    // Trouver le compte existant par email + vérifier le mot de passe
+    const { email, password } = req.body;
+    const user = await User.findOne({ email }).select('+password');
+    if (!user)
+      return res.status(404).json({
+        message: 'Aucun compte trouvé avec cet email.',
+        hint   : 'Utilisez /setup-admin pour créer un nouveau compte à la place.'
+      });
+
+    const validPwd = await user.checkPassword(password);
+    if (!validPwd)
+      return res.status(401).json({ message: 'Mot de passe incorrect pour ce compte' });
+
+    // Promouvoir en admin
+    user.role     = 'admin';
+    user.isActive = true;
+    await user.save();
+
+    const token = sign(user);
+    console.log(`✅ Compte promu admin : ${user.username} (${user.email})`);
+
+    res.json({
+      message: '🎉 Compte promu administrateur avec succès !',
+      token,
+      user: {
+        id: user._id, username: user.username,
+        email: user.email, role: user.role, avatar: user.avatar,
+      },
+    });
+
+  } catch (err) {
+    console.error('promote-admin error:', err);
+    res.status(500).json({ message: 'Erreur serveur', detail: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  GET /api/auth/check-conflict?email=...&username=...&phone=...
+//  Diagnostic : indique précisément lequel des 3 champs entre en
+//  conflit, pour éviter de tâtonner.
+// ══════════════════════════════════════════════════════════════
+router.get('/check-conflict', async (req, res) => {
+  const { email, username, phone } = req.query;
+  const conflicts = {};
+
+  if (email) {
+    const u = await User.findOne({ email: email.toLowerCase() });
+    if (u) conflicts.email = { taken: true, role: u.role };
+  }
+  if (username) {
+    const u = await User.findOne({ username });
+    if (u) conflicts.username = { taken: true, role: u.role };
+  }
+  if (phone) {
+    const u = await User.findOne({ phone });
+    if (u) conflicts.phone = { taken: true, role: u.role };
+  }
+
+  const anyAdmin = await User.exists({ role: 'admin' });
+
+  res.json({
+    conflicts,
+    hasConflict: Object.keys(conflicts).length > 0,
+    adminAlreadyExists: !!anyAdmin,
+  });
+});
+                       
