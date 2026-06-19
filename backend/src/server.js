@@ -33,7 +33,6 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // ── Page admin ──────────────────────────────────────────────────────────────────
-
 // ── Rate limiting ─────────────────────────────────────────────
 const globalLimiter = rateLimit({
   windowMs       : 15 * 60 * 1000,
@@ -101,6 +100,21 @@ app.get('/health', (_, res) => res.json({
   uptime : Math.floor(process.uptime()),
   ts     : new Date().toISOString(),
 }));
+
+// ════════════════════════════════════════════════════════════════
+//  DIAGNOSTIC WONYAPAY — vérifie la config sans faire d'appel réel
+// ════════════════════════════════════════════════════════════════
+app.get('/api/payment/status-check', (_, res) => {
+  const wonyapay = require('./services/wonyapay');
+  const configured = wonyapay.isConfigured();
+  res.json({
+    wonyapayConfigured: configured,
+    missingVariables  : configured ? [] : wonyapay.missingConfig(),
+    hint: configured
+      ? 'WonyaPay est correctement configuré.'
+      : 'Allez sur Render Dashboard → Environment → ajoutez les variables manquantes, puis redéployez.',
+  });
+});
 
 // ════════════════════════════════════════════════════════════════
 //  DEBUG — uniquement en développement
@@ -261,3 +275,4 @@ process.on('SIGINT', () => {
 });
 
 module.exports = { app, io };
+  
