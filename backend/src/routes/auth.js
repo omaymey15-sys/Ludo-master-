@@ -248,4 +248,87 @@ router.get('/check-conflict', async (req, res) => {
     adminAlreadyExists: !!anyAdmin,
   });
 });
-                       
+
+// ══════════════════════════════════════════════════════════════
+//  GET /api/auth/debug-users
+//  ─────────────────────────────────────────────────────────────
+//  Diagnostic complet : liste tous les comptes existants (sans
+//  mot de passe) pour comprendre l'état réel de la base.
+//  Consultable directement dans le navigateur.
+//  ⚠️ À retirer après le setup initial pour la production.
+// ══════════════════════════════════════════════════════════════
+router.get('/debug-users', async (req, res) => {
+  const users = await User.find()
+    .select('username email phone role isActive createdAt')
+    .sort({ createdAt: -1 })
+    .limit(20);
+
+  const adminCount = await User.countDocuments({ role: 'admin' });
+
+  res.json({
+    totalUsers : users.length,
+    adminCount,
+    users: users.map(u => ({
+      username : u.username,
+      email    : u.email,
+      phone    : u.phone,
+      role     : u.role,
+      isActive : u.isActive,
+      createdAt: u.createdAt,
+    })),
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+//  POST /api/auth/force-promote
+//  ─────────────────────────────────────────────────────────────
+//  Promeut le compte donné en admin, en utilisant UNIQUEMENT la
+//  clé de configuration (pas besoin de connaître le mot de passe
+//  du compte existant). Utile en cas de doute sur quel mot de
+//  passe a été utilisé lors d'une tentative précédente.
+//
+//  Sécurité : ne fonctionne que si aucun admin n'existe encore.
+// ══════════════════════════════════════════════════════════════
+router.post('/force-promote', [
+  body('email').isEmail().normalizeEmail().withMessage('Email invalide'),
+  body('setupKey').notEmpty().withMessage('Clé de setup requise'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
+
+    const SETUP_KEY = process.env.ADMIN_SETUP_KEY || 'ludomaster-setup-2024';
+    if (req.body.setupKey !== SETUP_KEY)
+      return res.status(403).json({ message: 'Clé de setup incorrecte' });
+
+    const existingAdmin = await User.findOne({ role: 'admin' });
+    if (existingAdmin)
+      return res.status(403).json({ message: 'Un administrateur existe déjà.' });
+
+    const user = await User.findOne({ email: req.body.email.toLowerCase() });
+    if (!user)
+      return res.status(404).json({ message: 'Aucun compte trouvé avec cet email.' });
+
+    user.role     = 'admin';
+    user.isActive = true;
+    await user.save();
+
+    const token = sign(user);
+    console.log(`✅ Compte forcé admin : ${user.username} (${user.email})`);
+
+    res.json({
+      message: '🎉 Compte promu administrateur (sans mot de passe) !',
+      token,
+      user: {
+        id: user._id, username: user.username,
+        email: user.email, role: user.role, avatar: user.avatar,
+      },
+    });
+
+  } catch (err) {
+    console.error('force-promote error:', err);
+    res.status(500).json({ message: 'Erreur serveur', detail: err.message });
+  }
+});
+    
