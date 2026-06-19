@@ -33,7 +33,6 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // ── Page admin ──────────────────────────────────────────────────────────────────
-const path = require('path');
 
 // ── Rate limiting ─────────────────────────────────────────────
 const globalLimiter = rateLimit({
