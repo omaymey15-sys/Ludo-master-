@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎲 Ludo Master Pro — Admin</title>
+<style>
+:root{--bg:#0d0d1a;--bg2:#13132a;--bg3:#1a1a3a;--gold:#FFD700;--green:#27AE60;
+  --red:#E74C3C;--blue:#2980B9;--text:#fff;--muted:#888899;--border:#222244}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text)}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:210px;background:var(--bg2);border-right:1px solid var(--border);
+  padding:24px 0;display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh}
+.main{margin-left:210px;flex:1;padding:28px}
+.logo{padding:0 18px 22px;font-size:18px;font-weight:800;color:var(--gold)}
+.nav-item{padding:11px 18px;cursor:pointer;border-radius:0 8px 8px 0;margin-right:8px;
+  color:var(--muted);font-size:13px;transition:.15s;display:flex;align-items:center;gap:9px}
+.nav-item:hover,.nav-item.active{background:var(--bg3);color:var(--text)}
+.nav-item.active{border-left:3px solid var(--gold)}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:24px}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px}
+.kpi-value{font-size:26px;font-weight:800;margin:5px 0 2px}
+.kpi-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px}
+.kpi.gold{border-color:var(--gold)} .kpi.gold .kpi-value{color:var(--gold)}
+.kpi.green{border-color:var(--green)} .kpi.green .kpi-value{color:var(--green)}
+.kpi.red{border-color:var(--red)} .kpi.red .kpi-value{color:var(--red)}
+.kpi.blue{border-color:var(--blue)} .kpi.blue .kpi-value{color:var(--blue)}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:18px}
+.card h2{font-size:13px;font-weight:700;margin-bottom:14px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{color:var(--muted);font-weight:600;padding:7px 10px;text-align:left;border-bottom:1px solid var(--border)}
+td{padding:9px 10px;border-bottom:1px solid #ffffff0a}
+tr:hover td{background:var(--bg3)}
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700}
+.badge.ok{background:#1E8449;color:#A9DFBF} .badge.pend{background:#784212;color:#FAD7A0}
+.badge.fail{background:#7B241C;color:#F1948A} .badge.open{background:#1A5276;color:#85C1E9}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;
+  border:none;cursor:pointer;font-size:12px;font-weight:600;transition:.15s}
+.btn-gold{background:var(--gold);color:#000} .btn-green{background:var(--green);color:#fff}
+.btn-red{background:var(--red);color:#fff}
+.btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+.btn:hover{opacity:.85} .btn:disabled{opacity:.4;cursor:not-allowed}
+.fg{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.fg label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.fg input,.fg select,.fg textarea{background:var(--bg3);border:1px solid var(--border);
+  border-radius:7px;color:var(--text);padding:9px 11px;font-size:13px;outline:none;width:100%}
+.fg input:focus{border-color:var(--gold)}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:10px;padding:12px 18px;font-size:13px;transform:translateY(80px);opacity:0;
+  transition:.3s;z-index:9999;max-width:320px}
+#toast.show{transform:translateY(0);opacity:1}
+#toast.ok{border-color:var(--green)} #toast.err{border-color:var(--red)}
+.section{display:none} .section.active{display:block}
+.page-title{font-size:20px;font-weight:800;margin-bottom:22px}
+.toolbar{display:flex;gap:8px;margin-bottom:14px;align-items:center}
+.toolbar input{flex:1;background:var(--bg3);border:1px solid var(--border);
+  border-radius:7px;color:var(--text);padding:8px 12px;font-size:12px;outline:none}
+.empty{text-align:center;color:var(--muted);padding:36px 0;font-size:13px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;
+  border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── SETUP overlay ── */
+#setup-overlay{position:fixed;inset:0;background:var(--bg);display:flex;
+  align-items:center;justify-content:center;z-index:9999;padding:16px}
+.setup-box{background:var(--bg2);border:2px solid var(--gold);border-radius:18px;
+  padding:36px;width:100%;max-width:460px}
+.setup-box h1{font-size:18px;color:var(--gold);margin-bottom:4px;text-align:center}
+.setup-box p{color:var(--muted);font-size:12px;text-align:center;margin-bottom:20px}
+.setup-note{background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+  padding:10px 13px;margin-bottom:14px;font-size:12px;color:var(--muted)}
+.setup-note strong{color:var(--text)}
+#setup-err{color:var(--red);font-size:12px;text-align:center;margin-top:10px;min-height:18px}
+
+/* ── LOGIN overlay ── */
+#login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;
+  align-items:center;justify-content:center;z-index:9998}
+.login-box{background:var(--bg2);border:1px solid var(--border);border-radius:16px;
+  padding:36px;width:320px}
+.login-box h1{font-size:20px;color:var(--gold);margin-bottom:22px;text-align:center}
+#login-err{color:var(--red);font-size:12px;margin-top:10px;text-align:center}
+
+@media(max-width:640px){.sidebar{display:none}.main{margin-left:0;padding:14px}.fgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ══ SETUP — Premier lancement ══════════════════════════════ -->
+<div id="setup-overlay" style="display:none">
+  <div class="setup-box">
+    <h1>🎲 Ludo Master Pro</h1>
+    <p>Aucun administrateur n'existe encore.<br>Créez votre compte unique maintenant.</p>
+    <div class="setup-note">
+      ⚠️ Cet écran disparaît <strong>définitivement</strong> dès le compte créé.
+    </div>
+    <div class="fg"><label>Clé de configuration (ADMIN_SETUP_KEY dans Render)</label>
+      <input type="text" id="s-key" placeholder="votre-clé-secrète"></div>
+    <div class="fgrid">
+      <div class="fg"><label>Pseudo admin</label>
+        <input type="text" id="s-user" placeholder="admin"></div>
+      <div class="fg"><label>Téléphone</label>
+        <input type="tel" id="s-phone" placeholder="+243812345678"></div>
+    </div>
+    <div class="fg"><label>Email</label>
+      <input type="email" id="s-email" placeholder="admin@ludomaster.cd"></div>
+    <div class="fgrid">
+      <div class="fg"><label>Mot de passe</label>
+        <input type="password" id="s-pwd" placeholder="min 8 caractères"></div>
+      <div class="fg"><label>Confirmer</label>
+        <input type="password" id="s-pwd2" placeholder="••••••••"></div>
+    </div>
+    <button class="btn btn-gold" id="s-btn"
+      style="width:100%;justify-content:center;margin-top:6px" onclick="doSetup()">
+      👑 Créer le compte administrateur
+    </button>
+    <p id="setup-err"></p>
+  </div>
+</div>
+
+<!-- ══ LOGIN ════════════════════════════════════════════════════ -->
+<div id="login-overlay">
+  <div class="login-box">
+    <h1>🎲 LudoAdmin</h1>
+    <div class="fg"><label>Email admin</label>
+      <input type="email" id="l-email" placeholder="admin@ludomaster.cd"></div>
+    <div class="fg" style="margin-bottom:18px"><label>Mot de passe</label>
+      <input type="password" id="l-pwd" placeholder="••••••••"
+        onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="btn btn-gold" id="l-btn"
+      style="width:100%;justify-content:center" onclick="doLogin()">
+      Connexion Admin
+    </button>
+    <p id="login-err"></p>
+  </div>
+</div>
+
+<!-- ══ LAYOUT ════════════════════════════════════════════════════ -->
+<div class="layout">
+  <nav class="sidebar">
+    <div class="logo">🎲 LudoAdmin</div>
+    <div class="nav-item active" onclick="nav('dashboard')">📊 Dashboard</div>
+    <div class="nav-item" onclick="nav('competitions')">🏆 Compétitions</div>
+    <div class="nav-item" onclick="nav('new-comp')">➕ Nouvelle</div>
+    <div class="nav-item" onclick="nav('users')">👥 Joueurs</div>
+    <div class="nav-item" onclick="nav('withdrawals')">💸 Retraits <span id="w-badge" style="background:#E74C3C;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px;display:none">0</span></div>
+    <div class="nav-item" onclick="nav('transactions')">📋 Transactions</div>
+    <div class="nav-item" onclick="nav('reports')">📈 Rapports</div>
+    <div style="flex:1"></div>
+    <div class="nav-item" onclick="logout()" style="margin-bottom:14px">🚪 Déconnexion</div>
+  </nav>
+
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div id="sec-dashboard" class="section active">
+      <div class="page-title">📊 Dashboard</div>
+      <div class="kpi-grid">
+        <div class="kpi gold"><div class="kpi-label">Revenus plateforme</div>
+          <div class="kpi-value" id="k-rev">—</div><div style="font-size:11px;color:var(--muted)">CDF</div></div>
+        <div class="kpi green"><div class="kpi-label">Total déposé</div>
+          <div class="kpi-value" id="k-dep">—</div><div style="font-size:11px;color:var(--muted)" id="k-dep-n">—</div></div>
+        <div class="kpi red"><div class="kpi-label">Total retiré</div>
+          <div class="kpi-value" id="k-wit">—</div><div style="font-size:11px;color:var(--muted)" id="k-wit-n">—</div></div>
+        <div class="kpi blue"><div class="kpi-label">Utilisateurs</div>
+          <div class="kpi-value" id="k-usr">—</div><div style="font-size:11px;color:var(--muted)" id="k-usr-a">—</div></div>
+        <div class="kpi" style="border-color:#9B59B6">
+          <div class="kpi-label">Compétitions ouvertes</div>
+          <div class="kpi-value" style="color:#D7BDE2" id="k-co">—</div></div>
+        <div class="kpi" style="border-color:#F39C12">
+          <div class="kpi-label">En cours</div>
+          <div class="kpi-value" style="color:#F39C12" id="k-cp">—</div></div>
+      </div>
+      <div class="card">
+        <h2>⚡ Dernières transactions</h2>
+        <table><thead><tr><th>Joueur</th><th>Type</th><th>Montant</th><th>Statut</th><th>Date</th></tr></thead>
+        <tbody id="tb-recent"></tbody></table>
+      </div>
+    </div>
+
+    <!-- COMPÉTITIONS -->
+    <div id="sec-competitions" class="section">
+      <div class="page-title">🏆 Compétitions</div>
+      <div class="toolbar">
+        <select id="cf" onchange="loadComps()"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 10px;font-size:12px">
+          <option value="">Tous</option><option value="open">Ouvertes</option>
+          <option value="full">Complètes</option><option value="playing">En jeu</option>
+          <option value="finished">Terminées</option><option value="cancelled">Annulées</option>
+        </select>
+        <button class="btn btn-gold" onclick="nav('new-comp')">➕ Créer</button>
+        <button class="btn btn-ghost" onclick="loadComps()">🔄</button>
+      </div>
+      <div class="card">
+        <table><thead><tr><th>Titre</th><th>Mise</th><th>Prize Pool</th><th>Joueurs</th><th>Statut</th><th>Date</th><th></th></tr></thead>
+        <tbody id="tb-comps"></tbody></table>
+      </div>
+    </div>
+
+    <!-- NOUVELLE COMPÉTITION -->
+    <div id="sec-new-comp" class="section">
+      <div class="page-title">➕ Créer une Compétition</div>
+      <div class="card">
+        <div class="fgrid">
+          <div class="fg" style="grid-column:1/-1"><label>Titre</label>
+            <input id="nc-t" placeholder="Tournoi du Vendredi — 500 CDF"></div>
+          <div class="fg"><label>Mise d'entrée (CDF)</label>
+            <input id="nc-f" type="number" min="200" placeholder="500" oninput="preview()"></div>
+          <div class="fg"><label>Joueurs max</label>
+            <select id="nc-m" onchange="preview()">
+              <option value="2">2 joueurs</option>
+              <option value="3">3 joueurs</option>
+              <option value="4" selected>4 joueurs</option>
+            </select></div>
+          <div class="fg"><label>Gains 1er (%)</label>
+            <input id="nc-p1" type="number" value="60" oninput="preview()"></div>
+          <div class="fg"><label>Gains 2ème (%)</label>
+            <input id="nc-p2" type="number" value="30" oninput="preview()"></div>
+          <div class="fg"><label>Gains 3ème (%)</label>
+            <input id="nc-p3" type="number" value="10" oninput="preview()"></div>
+          <div class="fg"><label>Ouverture</label>
+            <input id="nc-o" type="datetime-local"></div>
+        </div>
+        <div id="nc-prev" style="background:var(--bg3);border-radius:9px;padding:14px;margin-top:14px;font-size:12px;color:var(--muted)">
+          Remplissez les champs pour voir l'aperçu…
+        </div>
+        <button class="btn btn-gold" onclick="createComp()" style="margin-top:16px">🚀 Créer</button>
+      </div>
+    </div>
+
+    <!-- JOUEURS -->
+    <div id="sec-users" class="section">
+      <div class="page-title">👥 Joueurs</div>
+      <div class="toolbar">
+        <input id="us" placeholder="Pseudo, email, téléphone…" oninput="searchUsers()">
+        <button class="btn btn-ghost" onclick="loadUsers()">🔄</button>
+      </div>
+      <div class="card">
+        <table><thead><tr><th>Joueur</th><th>Email</th><th>Solde</th><th>Parties</th><th>%Win</th><th>Statut</th><th></th></tr></thead>
+        <tbody id="tb-users"></tbody></table>
+      </div>
+    </div>
+
+    <!-- RETRAITS EN ATTENTE -->
+    <div id="sec-withdrawals" class="section">
+      <div class="page-title">💸 Retraits en attente</div>
+      <div id="w-empty" class="card" style="text-align:center;color:var(--muted);padding:40px;display:none">
+        ✅ Aucun retrait en attente
+      </div>
+      <div id="w-list"></div>
+    </div>
+
+    <!-- TRANSACTIONS -->
+    <div id="sec-transactions" class="section">
+      <div class="page-title">💰 Transactions</div>
+      <div class="card">
+        <table><thead><tr><th>Joueur</th><th>Type</th><th>Opérateur</th><th>Montant</th><th>Statut</th><th>Référence</th><th>Date</th></tr></thead>
+        <tbody id="tb-tx"></tbody></table>
+      </div>
+    </div>
+
+    <!-- RAPPORTS -->
+    <div id="sec-reports" class="section">
+      <div class="page-title">📈 Rapports</div>
+      <div class="card"><h2>🏆 Top Joueurs</h2>
+        <table><thead><tr><th>#</th><th>Joueur</th><th>Parties</th><th>Victoires</th><th>Win%</th><th>Gains</th><th>Solde</th></tr></thead>
+        <tbody id="tb-top"></tbody></table>
+      </div>
+      <div class="card"><h2>📊 Par Opérateur Mobile Money</h2>
+        <table><thead><tr><th>Opérateur</th><th>Transactions</th><th>Volume CDF</th></tr></thead>
+        <tbody id="tb-ops"></tbody></table>
+      </div>
+    </div>
+
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════
+// API — utilise des chemins RELATIFS (même serveur)
+// https://ludo-master-apii.onrender.com/admin
+//                                      ^^^^^^ cette page
+// https://ludo-master-apii.onrender.com/api/...
+//                                      ^^^^^ api
+// ════════════════════════════════════════════════════════
+const API_BASE = '';   // vide = même origin
+let TOKEN = localStorage.getItem('ludo_token') || '';
+
+const fmt   = n  => Number(n||0).toLocaleString('fr-CD') + ' CDF';
+const fmtDt = dt => new Date(dt).toLocaleString('fr-CD');
+
+async function api(path, opts = {}) {
+  const res = await fetch(API_BASE + path, {
+    ...opts,
+    headers: {
+      'Content-Type' : 'application/json',
+      'Authorization': `Bearer ${TOKEN}`,
+      ...(opts.headers || {}),
+    },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || `Erreur ${res.status}`);
+  return data;
+}
+
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  setTimeout(() => el.className = '', 3800);
+}
+
+function badge(s) {
+  const m = {success:'ok',pending:'pend',failed:'fail',open:'open',
+             finished:'fail',playing:'ok',full:'ok',cancelled:'fail'};
+  const l = {success:'✅ Succès',pending:'⏳ Attente',failed:'❌ Échoué',
+             open:'🟢 Ouverte',finished:'🏁 Terminée',playing:'🎮 En jeu',
+             full:'👥 Complète',cancelled:'🚫 Annulée'};
+  return `<span class="badge ${m[s]||''}">${l[s]||s}</span>`;
+}
+
+// ════════════════════════════════════════════════════════
+// BOOT — vérifier si admin existe
+// ════════════════════════════════════════════════════════
+async function boot() {
+  if (TOKEN) {
+    try { await api('/api/auth/me'); showApp(); loadDashboard(); return; }
+    catch { TOKEN = ''; localStorage.removeItem('ludo_token'); }
+  }
+  try {
+    const s = await api('/api/auth/setup-status');
+    s.adminExists ? showLogin() : showSetup();
+  } catch {
+    showLogin();
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// SETUP
+// ════════════════════════════════════════════════════════
+function showSetup() {
+  document.getElementById('setup-overlay').style.display = 'flex';
+  document.getElementById('login-overlay').style.display = 'none';
+}
+
+async function doSetup() {
+  const key  = document.getElementById('s-key').value.trim();
+  const user = document.getElementById('s-user').value.trim();
+  const phone= document.getElementById('s-phone').value.trim();
+  const email= document.getElementById('s-email').value.trim();
+  const pwd  = document.getElementById('s-pwd').value;
+  const pwd2 = document.getElementById('s-pwd2').value;
+  const errEl= document.getElementById('setup-err');
+  const btn  = document.getElementById('s-btn');
+
+  errEl.textContent = '';
+  if (!key)           return (errEl.textContent = 'Entrez la clé de configuration');
+  if (!user)          return (errEl.textContent = 'Entrez un pseudo');
+  if (!phone)         return (errEl.textContent = 'Entrez votre numéro');
+  if (!email)         return (errEl.textContent = 'Entrez un email');
+  if (pwd.length < 8) return (errEl.textContent = 'Mot de passe min 8 caractères');
+  if (pwd !== pwd2)   return (errEl.textContent = 'Les mots de passe ne correspondent pas');
+
+  btn.innerHTML = '<span class="spin"></span> Création…';
+  btn.disabled  = true;
+
+  try {
+    const resp = await fetch('/api/auth/setup-admin', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ username:user, email, password:pwd, phone, setupKey:key, avatar:'👑' }),
+    });
+    let data;
+    try { data = await resp.json(); }
+    catch { throw new Error('Réponse non-JSON — vérifiez que le serveur tourne'); }
+
+    if (!resp.ok) {
+      // Cas spécial : compte déjà existant (tentative précédente échouée
+      // après création) — proposer de le promouvoir au lieu de bloquer.
+      if (resp.status === 409) {
+        errEl.innerHTML = `
+          Email, pseudo ou téléphone déjà utilisé.<br>
+          <button class="btn btn-gold" style="margin-top:8px;padding:6px 12px;font-size:12px"
+            onclick="tryPromote()">
+            🔧 Promouvoir ce compte en admin
+          </button>
+          <br><a href="/api/auth/debug-users" target="_blank"
+            style="color:var(--gold);font-size:11px;display:inline-block;margin-top:8px">
+            Voir tous les comptes existants →
+          </a>`;
+        return;
+      }
+      errEl.textContent = data.errors?.[0]?.msg || data.message || 'Erreur serveur';
+      return;
+    }
+    TOKEN = data.token;
+    localStorage.setItem('ludo_token', TOKEN);
+    document.getElementById('setup-overlay').style.display = 'none';
+    toast('Compte admin créé !');
+    showApp();
+    loadDashboard();
+  } catch (e) {
+    errEl.textContent = 'Erreur : ' + e.message;
+  } finally {
+    btn.innerHTML = 'Créer le compte administrateur';
+    btn.disabled  = false;
+  }
+}
+
+// ── Promotion forcée (ne nécessite que la clé de config) ──────
+async function tryPromote() {
+  const key   = document.getElementById('s-key').value.trim();
+  const email = document.getElementById('s-email').value.trim();
+  const errEl = document.getElementById('setup-err');
+
+  if (!email) { errEl.textContent = 'Entrez l\u2019email du compte à promouvoir'; return; }
+
+  errEl.innerHTML = '<span class="spin"></span> Promotion en cours…';
+
+  try {
+    const resp = await fetch('/api/auth/force-promote', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ email, setupKey: key }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errEl.innerHTML = (data.message || 'Échec de la promotion') +
+        '<br><a href="/api/auth/debug-users" target="_blank" ' +
+        'style="color:var(--gold);font-size:11px">Voir les comptes existants →</a>';
+      return;
+    }
+
+    TOKEN = data.token;
+    localStorage.setItem('ludo_token', TOKEN);
+    document.getElementById('setup-overlay').style.display = 'none';
+    toast('Compte promu administrateur !');
+    showApp();
+    loadDashboard();
+  } catch (e) {
+    errEl.textContent = 'Erreur : ' + e.message;
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// LOGIN
+// ════════════════════════════════════════════════════════
+function showLogin() {
+  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('setup-overlay').style.display = 'none';
+}
+
+async function doLogin() {
+  const email = document.getElementById('l-email').value.trim();
+  const pwd   = document.getElementById('l-pwd').value;
+  const errEl = document.getElementById('login-err');
+  const btn   = document.getElementById('l-btn');
+
+  errEl.textContent = '';
+  if (!email || !pwd) return (errEl.textContent = 'Email et mot de passe requis');
+
+  btn.innerHTML = '<span class="spin"></span>';
+  btn.disabled  = true;
+
+  try {
+    const resp = await fetch('/api/auth/login', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ email, password: pwd }),
+    });
+    const data = await resp.json();
+    if (!resp.ok)              throw new Error(data.message || 'Identifiants incorrects');
+    if (data.user?.role !== 'admin') throw new Error('Ce compte n\u2019est pas admin');
+
+    TOKEN = data.token;
+    localStorage.setItem('ludo_token', TOKEN);
+    document.getElementById('login-overlay').style.display = 'none';
+    showApp();
+    loadDashboard();
+    toast('Bienvenue !');
+  } catch (e) {
+    errEl.textContent = e.message;
+  } finally {
+    btn.innerHTML = 'Connexion Admin';
+    btn.disabled  = false;
+  }
+}
+
+function showApp() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('setup-overlay').style.display = 'none';
+}
+
+function logout() {
+  TOKEN = '';
+  localStorage.removeItem('ludo_token');
+  location.reload();
+}
+
+// ════════════════════════════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════════════════════════════
+function nav(s) {
+  document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
+  document.getElementById('sec-' + s)?.classList.add('active');
+  const idx = {dashboard:0,competitions:1,'new-comp':2,users:3,withdrawals:4,transactions:5,reports:6};
+  document.querySelectorAll('.nav-item')[idx[s]]?.classList.add('active');
+  if (s === 'dashboard')   loadDashboard();
+  if (s === 'competitions')loadComps();
+  if (s === 'users')       loadUsers();
+  if (s === 'withdrawals')  loadWithdrawals();
+  if (s === 'transactions') loadTx();
+  if (s === 'reports')     loadReports();
+}
+
+// ════════════════════════════════════════════════════════
+// DASHBOARD
+// ════════════════════════════════════════════════════════
+async function loadDashboard() {
+  try {
+    const d = await api('/api/admin/dashboard');
+    document.getElementById('k-rev').textContent   = fmt(d.finance.platformRevenue);
+    document.getElementById('k-dep').textContent   = fmt(d.finance.totalDeposited);
+    document.getElementById('k-dep-n').textContent = d.finance.depositCount + ' dépôts';
+    document.getElementById('k-wit').textContent   = fmt(d.finance.totalWithdrawn);
+    document.getElementById('k-wit-n').textContent = d.finance.withdrawCount + ' retraits';
+    document.getElementById('k-usr').textContent   = d.users.total;
+    document.getElementById('k-usr-a').textContent = d.users.active + ' actifs';
+    document.getElementById('k-co').textContent    = d.competitions.open;
+    document.getElementById('k-cp').textContent    = d.competitions.playing;
+    document.getElementById('tb-recent').innerHTML =
+      (d.recentTransactions || []).map(tx => `
+        <tr>
+          <td>${tx.user?.username || '—'}</td>
+          <td>${tx.type}</td>
+          <td style="color:${['deposit','prize'].includes(tx.type)?'#27AE60':'#E74C3C'}">
+            ${['deposit','prize'].includes(tx.type)?'+':'-'}${fmt(tx.amount)}</td>
+          <td>${badge(tx.status)}</td>
+          <td>${fmtDt(tx.createdAt)}</td>
+        </tr>`).join('') || '<tr><td colspan="5" class="empty">Aucune transaction</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+
+  // Badge retraits en attente
+  try {
+    const w = await api('/api/payment/withdrawals/pending');
+    const b = document.getElementById('w-badge');
+    if (w.count > 0) { b.textContent = w.count; b.style.display = 'inline'; }
+    else b.style.display = 'none';
+  } catch(_) {}
+}
+
+// ════════════════════════════════════════════════════════
+// COMPÉTITIONS
+// ════════════════════════════════════════════════════════
+async function loadComps() {
+  const s = document.getElementById('cf')?.value || '';
+  try {
+    const d = await api('/api/admin/competitions?status=' + s + '&limit=50');
+    document.getElementById('tb-comps').innerHTML =
+      (d.competitions || []).map(c => `
+        <tr>
+          <td><strong>${c.title}</strong></td>
+          <td>${fmt(c.entryFee)}</td>
+          <td style="color:var(--gold)">${fmt(c.prizePool)}</td>
+          <td>${c.players.length}/${c.maxPlayers}</td>
+          <td>${badge(c.status)}</td>
+          <td>${fmtDt(c.createdAt)}</td>
+          <td><button class="btn btn-ghost" style="padding:3px 8px;font-size:11px"
+            onclick="cancelComp('${c._id}')">🚫</button></td>
+        </tr>`).join('') || '<tr><td colspan="7" class="empty">Aucune compétition</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function cancelComp(id) {
+  if (!confirm('Annuler et rembourser tous les joueurs ?')) return;
+  try {
+    const d = await api('/api/competitions/' + id, { method: 'DELETE' });
+    toast('Annulée — ' + (d.refunds?.length || 0) + ' remboursements');
+    loadComps();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+function preview() {
+  const f = +document.getElementById('nc-f').value || 0;
+  const m = +document.getElementById('nc-m').value || 4;
+  const p1= +document.getElementById('nc-p1').value || 0;
+  const p2= +document.getElementById('nc-p2').value || 0;
+  const p3= +document.getElementById('nc-p3').value || 0;
+  const g = f * m;
+  const fee = Math.floor(g * 0.1);
+  const pool= g - fee;
+  const ok  = p1 + p2 + p3 === 100;
+  document.getElementById('nc-prev').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div>💰 Mise : <strong>${fmt(f)}</strong></div>
+      <div>👥 Max : <strong>${m}</strong></div>
+      <div>📦 Brut : <strong>${fmt(g)}</strong></div>
+      <div>🏦 Frais 10% : <strong style="color:var(--red)">${fmt(fee)}</strong></div>
+      <div>🏆 Prize pool : <strong style="color:var(--gold)">${fmt(pool)}</strong></div>
+      <div style="color:${ok?'var(--green)':'var(--red)'}">Total dist : ${p1+p2+p3}% ${ok?'✅':'❌'}</div>
+      <div>🥇 ${fmt(Math.floor(pool*p1/100))} (${p1}%)</div>
+      <div>🥈 ${fmt(Math.floor(pool*p2/100))} (${p2}%)</div>
+      ${p3?'<div>🥉 '+fmt(Math.floor(pool*p3/100))+' ('+p3+'%)</div>':''}
+    </div>`;
+}
+
+async function createComp() {
+  const p1=+document.getElementById('nc-p1').value||60;
+  const p2=+document.getElementById('nc-p2').value||30;
+  const p3=+document.getElementById('nc-p3').value||10;
+  if (p1+p2+p3 !== 100) return toast('Distribution doit totaliser 100%', 'err');
+  const dist=[p1]; if(p2>0)dist.push(p2); if(p3>0)dist.push(p3);
+  try {
+    await api('/api/admin/competitions', { method:'POST', body:{
+      title:    document.getElementById('nc-t').value,
+      entryFee: +document.getElementById('nc-f').value,
+      maxPlayers:+document.getElementById('nc-m').value,
+      prizeDistribution: dist,
+      openAt:   document.getElementById('nc-o').value || undefined,
+    }});
+    toast('Compétition créée !');
+    nav('competitions');
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ════════════════════════════════════════════════════════
+// JOUEURS
+// ════════════════════════════════════════════════════════
+let utimer;
+function searchUsers() { clearTimeout(utimer); utimer = setTimeout(loadUsers, 400); }
+
+async function loadUsers() {
+  const q = encodeURIComponent(document.getElementById('us')?.value || '');
+  try {
+    const d = await api('/api/admin/users?search=' + q + '&limit=40');
+    document.getElementById('tb-users').innerHTML =
+      (d.users || []).map(u => `
+        <tr>
+          <td>${u.avatar} <strong>${u.username}</strong></td>
+          <td style="color:var(--muted);font-size:11px">${u.email}</td>
+          <td style="color:var(--gold)">${fmt(u.wallet?.balance)}</td>
+          <td>${u.stats?.gamesPlayed||0}</td>
+          <td>${u.stats?.winRate||0}%</td>
+          <td>${u.isActive?'<span class="badge ok">Actif</span>':'<span class="badge fail">Inactif</span>'}</td>
+          <td><button class="btn btn-ghost" style="padding:3px 8px;font-size:11px"
+            onclick="toggleUser('${u._id}',${!u.isActive})">
+            ${u.isActive?'🔒':'🔓'}</button></td>
+        </tr>`).join('') || '<tr><td colspan="7" class="empty">Aucun joueur</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function toggleUser(id, active) {
+  try {
+    await api('/api/admin/users/' + id + '/status', { method:'PATCH', body:{ isActive:active }});
+    toast('Compte ' + (active ? 'activé' : 'désactivé'));
+    loadUsers();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ════════════════════════════════════════════════════════
+// RETRAITS EN ATTENTE
+// ════════════════════════════════════════════════════════
+async function loadWithdrawals() {
+  try {
+    const d = await api('/api/payment/withdrawals/pending');
+    const badge = document.getElementById('w-badge');
+    const empty = document.getElementById('w-empty');
+    const list  = document.getElementById('w-list');
+
+    if (d.count === 0) {
+      badge.style.display = 'none';
+      empty.style.display = 'block';
+      list.innerHTML      = '';
+      return;
+    }
+
+    badge.textContent   = d.count;
+    badge.style.display = 'inline';
+    empty.style.display = 'none';
+
+    list.innerHTML = d.items.map(w => `
+      <div class="card" style="border-color:#F39C12;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:16px;font-weight:800;color:#F39C12;margin-bottom:6px">
+              ${w.amount.toLocaleString('fr-CD')} CDF
+            </div>
+            <div style="font-size:13px;color:var(--text);margin-bottom:3px">
+              👤 <strong>${w.username}</strong>
+            </div>
+            <div style="font-size:12px;color:var(--muted)">📧 ${w.email}</div>
+            <div style="font-size:13px;color:var(--text);margin-top:6px">
+              📱 <strong>${w.momoPhone}</strong>
+              <span style="background:var(--bg3);padding:2px 8px;border-radius:6px;font-size:11px;margin-left:6px">
+                ${w.operator}
+              </span>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">
+              ⏱ Il y a ${w.minutesAgo < 60
+                ? w.minutesAgo + ' min'
+                : Math.floor(w.minutesAgo/60) + 'h' + (w.minutesAgo%60) + 'min'}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:140px">
+            <div style="background:var(--bg3);border-radius:8px;padding:10px;font-size:11px;color:var(--muted)">
+              <div style="font-weight:700;color:var(--text);margin-bottom:4px">À envoyer sur :</div>
+              <div style="color:var(--gold);font-size:14px;font-weight:800">${w.momoPhone}</div>
+              <div>${w.operator} — ${w.amount.toLocaleString('fr-CD')} CDF</div>
+            </div>
+            <button class="btn btn-green" onclick="confirmWithdraw('${w.id}')"
+              style="justify-content:center">
+              ✅ J'ai payé
+            </button>
+            <button class="btn btn-ghost" onclick="rejectWithdraw('${w.id}')"
+              style="justify-content:center;font-size:11px">
+              ❌ Annuler
+            </button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // Total en bas
+    list.innerHTML += `
+      <div class="card" style="text-align:center">
+        <span style="color:var(--muted);font-size:12px">Total à payer : </span>
+        <strong style="color:var(--gold);font-size:16px">${d.total.toLocaleString('fr-CD')} CDF</strong>
+        <span style="color:var(--muted);font-size:12px"> sur ${d.count} retrait(s)</span>
+      </div>`;
+
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function confirmWithdraw(id) {
+  if (!confirm('Avez-vous bien envoyé l'argent sur le numéro indiqué ?')) return;
+  try {
+    const d = await api('/api/payment/withdraw/' + id + '/confirm', { method: 'PATCH', body: {} });
+    toast('✅ ' + d.message);
+    loadWithdrawals();
+    loadDashboard();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function rejectWithdraw(id) {
+  const reason = prompt('Raison de l'annulation (optionnel) :') || 'Annulé par admin';
+  try {
+    const d = await api('/api/payment/withdraw/' + id + '/reject', {
+      method: 'PATCH', body: { reason }
+    });
+    toast(d.message);
+    loadWithdrawals();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ════════════════════════════════════════════════════════
+// TRANSACTIONS
+// ════════════════════════════════════════════════════════
+async function loadTx() {
+  try {
+    const d = await api('/api/payment/history?limit=40');
+    document.getElementById('tb-tx').innerHTML =
+      (d.transactions || []).map(tx => `
+        <tr>
+          <td>${tx.user?.username||'—'}</td>
+          <td><code>${tx.type}</code></td>
+          <td>${tx.operator||'—'}</td>
+          <td style="color:${['deposit','prize'].includes(tx.type)?'#27AE60':'#E74C3C'}">
+            ${['deposit','prize'].includes(tx.type)?'+':'-'}${fmt(tx.amount)}</td>
+          <td>${badge(tx.status)}</td>
+          <td style="font-size:10px;color:var(--muted)">${tx.wonyaRef||'—'}</td>
+          <td style="font-size:11px">${fmtDt(tx.createdAt)}</td>
+        </tr>`).join('') || '<tr><td colspan="7" class="empty">Aucune transaction</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ════════════════════════════════════════════════════════
+// RAPPORTS
+// ════════════════════════════════════════════════════════
+async function loadReports() {
+  try {
+    const [top, daily] = await Promise.all([
+      api('/api/admin/reports/top-players'),
+      api('/api/admin/reports/daily?days=30'),
+    ]);
+    document.getElementById('tb-top').innerHTML =
+      top.map((u,i) => `
+        <tr><td>${i+1}</td><td>${u.avatar} ${u.username}</td>
+        <td>${u.stats?.gamesPlayed||0}</td><td>${u.stats?.gamesWon||0}</td>
+        <td>${u.stats?.winRate||0}%</td>
+        <td style="color:var(--gold)">${fmt(u.stats?.totalEarned)}</td>
+        <td>${fmt(u.wallet?.balance)}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">—</td></tr>';
+    document.getElementById('tb-ops').innerHTML =
+      (daily.byOperator||[]).map(o=>`
+        <tr><td><strong>${o._id||'—'}</strong></td><td>${o.count}</td>
+        <td style="color:var(--gold)">${fmt(o.total)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">—</td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ════════════════════════════════════════════════════════
+// START
+// ════════════════════════════════════════════════════════
+boot();
+</script>
+</body>
+</html>
