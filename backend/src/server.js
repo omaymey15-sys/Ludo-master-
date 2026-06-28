@@ -112,7 +112,7 @@ app.get('/api/payment/config-status', (_, res) => {
     depositMode      : unipay.isConfigured()
       ? 'AUTOMATIQUE via Unipay Congo (4% frais)'
       : 'NON CONFIGURÉ — ajoutez UNIPAY_API_KEY sur Render',
-    withdrawalMode   : 'MANUEL — l'admin envoie depuis son compte Unipay',
+    withdrawalMode   : 'MANUEL — ladmin envoie depuis son compte Unipay',
     operators        : unipay.OPERATOR_NAMES,
   });
 });
