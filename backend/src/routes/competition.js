@@ -206,7 +206,7 @@ router.delete('/:id', auth, adminOnly, async (req, res) => {
   const comp = await Competition.findById(req.params.id);
   if (!comp) return res.status(404).json({ message: 'Non trouvée' });
   if (comp.status === 'finished')
-    return res.status(400).json({ message: 'Impossible d'annuler une partie terminée' });
+    return res.status(400).json({ message: 'Impossible dannuler une partie terminée' });
 
   // Rembourser tous les joueurs inscrits
   const refunds = [];
