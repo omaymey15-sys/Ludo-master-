@@ -32,8 +32,7 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ── Page admin ──────────────────────────────────────────────────────────────────
-const path = require('path');
+// ── Page admin ─────────────────────────────────────────────────────────────────
 
 // ── Rate limiting ─────────────────────────────────────────────
 const globalLimiter = rateLimit({
@@ -234,7 +233,7 @@ function startKeepAlive(url) {
 const PORT = process.env.PORT || 3000;
 
 if (!process.env.MONGO_URI) {
-  console.error('❌ MONGO_URI manquant dans les variables d'environnement !');
+  console.error('❌ MONGO_URI manquant dans les variables denvironnement !');
   console.error('   → Allez dans Render Dashboard → Environment → ajoutez MONGO_URI');
   process.exit(1);
 }
